@@ -1,1 +1,223 @@
-# mirdeep-p3
+# [mirdeep-p3]
+[一句话说明：这是做什么的。例：A reproducible pipeline for miRNA discovery and quantification from small RNA-seq.]
+
+## Highlights
+- ✅ Feature 1 (e.g., end-to-end pipeline from FASTQ to results)
+- ✅ Feature 2 (e.g., supports hg38/mm10 and custom references)
+- ✅ Feature 3 (e.g., Docker/Conda ready, fully reproducible)
+- ✅ Feature 4 (e.g., produces publication-ready plots/tables)
+
+## Table of Contents
+- [Introduction](#introduction)
+- [Workflow](#workflow)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Input & Output](#input--output)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Examples](#examples)
+- [Reproducibility](#reproducibility)
+- [Testing](#testing)
+- [Troubleshooting / FAQ](#troubleshooting--faq)
+- [Citation](#citation)
+- [License](#license)
+- [Contributing](#contributing)
+- [Contact](#contact)
+- [Acknowledgements](#acknowledgements)
+
+---
+
+## Introduction
+**[Project Name]** is a [tool/pipeline/package] for **[biological goal]** using **[method/algorithm]**.
+
+Typical use cases:
+- [Use case 1]
+- [Use case 2]
+- [Use case 3]
+
+If you use this software in academic work, please see [Citation](#citation).
+
+## Workflow
+> 建议放一张流程图（`docs/workflow.png`）或用 Mermaid。
+
+```mermaid
+flowchart LR
+  A[FASTQ] --> B[QC/Trim]
+  B --> C[Align/Map]
+  C --> D[Quantification]
+  D --> E[Downstream analysis]
+  E --> F[Reports/Plots]
+```
+
+## Requirements
+### Supported Platforms
+- Linux (recommended)
+- macOS (partial/optional)
+- Windows (WSL recommended)
+
+### Dependencies
+- [Python >= 3.10] / [R >= 4.3] / [Nextflow/Snakemake] / ...
+- [bowtie/bwa/star/samtools/bedtools/...] (按你的项目写)
+- Optional: Docker / Singularity
+
+> 建议把完整依赖放到 `environment.yml`、`requirements.txt` 或 `pyproject.toml`，README 只列关键项。
+
+## Installation
+### Option A: Conda (recommended)
+```bash
+conda env create -f environment.yml
+conda activate [env-name]
+```
+
+### Option B: Pip
+```bash
+pip install -r requirements.txt
+# or
+pip install .
+```
+
+### Option C: Docker
+```bash
+docker build -t [image-name] .
+docker run --rm -it [image-name] --help
+```
+
+## Quick Start
+### 1) Prepare input
+```bash
+mkdir -p data results
+# put your FASTQ/FASTA/metadata into data/
+```
+
+### 2) Run
+```bash
+[main_command] \
+  --input data/[input] \
+  --outdir results \
+  --threads 8
+```
+
+### 3) Check outputs
+```bash
+ls -lah results
+```
+
+## Input & Output
+### Input
+| Name | Type | Description |
+|---|---|---|
+| `--input` | file/dir | [e.g., FASTQ directory] |
+| `--reference` | file | [e.g., genome fasta] |
+| `--metadata` | table | [e.g., sample sheet CSV/TSV] |
+
+**Example sample sheet (`samples.tsv`)**
+```tsv
+sample_id	condition	fastq_1	fastq_2
+S1	CTRL	data/S1_R1.fastq.gz	data/S1_R2.fastq.gz
+S2	TREAT	data/S2_R1.fastq.gz	data/S2_R2.fastq.gz
+```
+
+### Output
+| Path | Description |
+|---|---|
+| `results/summary.tsv` | Main summary table |
+| `results/logs/` | Logs for each step |
+| `results/qc/` | QC reports (FastQC/MultiQC) |
+| `results/plots/` | Publication-ready figures |
+| `results/version_info.txt` | Tool + reference versions |
+
+## Configuration
+- Default config: `config/default.yaml`
+- Example config: `config/example.yaml`
+
+Key parameters:
+- `threads`: number of threads
+- `genome_build`: hg38/mm10/custom
+- `adapter_sequence`: [small RNA adapter]
+- `min_length`: [e.g., 18]
+
+## Usage
+### Show help
+```bash
+[main_command] --help
+```
+
+### Typical run
+```bash
+[main_command] \
+  --samples samples.tsv \
+  --genome resources/hg38.fa \
+  --outdir results \
+  --threads 16
+```
+
+### Advanced
+- Resume: `[pipeline framework option]`
+- Custom reference build: `[how]`
+- Skip steps: `[flags]`
+
+## Examples
+See:
+- `examples/` for minimal runnable examples
+- `docs/` for extended tutorials
+
+## Reproducibility
+This repository provides:
+- Exact dependency locking via: [Conda env / Docker image / lockfile]
+- Version tracking in `results/version_info.txt`
+- Deterministic parameters recorded in `results/run_config.yaml`
+
+Recommended practice:
+- Run with fixed versions
+- Commit `environment.yml` and reference hashes
+- Archive outputs with `results/` + `logs/`
+
+## Testing
+```bash
+pytest -q
+# or
+bash tests/run_smoke_test.sh
+```
+
+CI (GitHub Actions) should validate:
+- Lint/format
+- Unit tests
+- Small end-to-end toy dataset
+
+## Troubleshooting / FAQ
+### Q1: [Common error]
+**A:** [Fix / command / explanation]
+
+### Q2: Low mapping rate?
+**A:** Check:
+- adapter trimming
+- reference build mismatch
+- read length filtering
+
+## Citation
+If you use **[Project Name]**, please cite:
+
+- **Software:** [Authors]. *[Project Name]* (Version X.Y.Z). GitHub, Year. URL: <repo-url>
+- **Paper (if any):** [Authors]. *Title*. Journal Year. DOI
+
+You can also use the `CITATION.cff` file.
+
+## License
+This project is licensed under the **[MIT/BSD-3/GPL-3.0/Apache-2.0]** License. See `LICENSE`.
+
+## Contributing
+PRs and issues are welcome.
+- Please read `CONTRIBUTING.md`
+- Run tests before submitting
+- Follow code style: `pre-commit run -a`
+
+## Contact
+- Maintainer: [Name] ([email])
+- Lab/Org: [Lab name]
+- Issues: please open a GitHub Issue
+
+## Acknowledgements
+- [Funding]
+- [Upstream tools]
+- [Contributors]
