@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2026 Jiawen Zhao.
+# All rights reserved.
+
+
 """
 filter_best_scores_by_query.py
 
