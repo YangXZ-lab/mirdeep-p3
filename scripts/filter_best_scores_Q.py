@@ -5,7 +5,7 @@
 
 
 """
-filter_best_scores_by_query.py
+filter_best_scores_Q.py
 
 Filter bowtie scoring results to keep only the best scoring alignment per query.
 Best is defined as: minimum total score (S). If total scores tie, then compare
