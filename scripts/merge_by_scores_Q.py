@@ -3,7 +3,6 @@
 # Copyright 2026 Jiawen Zhao.
 # All rights reserved.
 
-
 """
 merge_by_scores_Q.py
 
@@ -21,16 +20,16 @@ Selection rule for third column (based on families):
     2. If tie, prefer MIR > MIRN > other, and smaller numeric part.
     3. If still tie, alphabetically first.
 
-SPECIAL RULE (added):
-    If the candidate families contain both 'MIR165' and 'MIR166',
-    then the decision is made based on the 17th base of the query sequence:
-        - 17th base == 'C' -> choose MIR165
-        - 17th base == 'T' -> choose MIR166
-    This requires providing a FASTA file via -f/--fasta.
+SPECIAL RULES (added):
+    - If both 'MIR165' and 'MIR166' are present in family_counts:
+        Use 17th base of query sequence: C -> MIR165, T -> MIR166.
+    - If both 'MIR170' and 'MIR171' are present in family_counts:
+        Use 12th base of query sequence: C -> MIR170, T -> MIR171.
+    These require providing a FASTA file via -f/--fasta.
 
 Usage:
-    python merge_by_query.py -i isoform.best.score -o merged.txt -f sequences.fasta
-    cat isoform.best.score | python merge_by_query.py -f sequences.fasta > merged.txt
+    python merge_by_scores_Q.py -i isoform.best.score -o merged.txt -f sequences.fasta
+    cat isoform.best.score | python merge_by_scores_Q_v2.py -f sequences.fasta > merged.txt
 """
 
 import sys
@@ -74,16 +73,17 @@ def family_priority_key(family):
 def select_best_family(family_counts, query_seq=None):
     """
     family_counts: dict {family: count}
-    query_seq: optional string, the sequence of the query (for special 165/166 rule)
+    query_seq: optional string, the sequence of the query (for special rules)
     
     Select best family based on:
-        1. SPECIAL: if both 'MIR165' and 'MIR166' in family_counts and query_seq is provided,
-           use 17th base: C -> MIR165, T -> MIR166.
+        1. SPECIAL RULES (if both families in conflict and query_seq provided):
+           - MIR165 vs MIR166: 17th base C -> MIR165, T -> MIR166
+           - MIR170 vs MIR171: 12th base C -> MIR170, T -> MIR171
         2. Otherwise: highest count -> priority -> number -> alphabetical.
     """
     families = set(family_counts.keys())
     
-    # Special handling for MIR165 vs MIR166 conflict
+    # Special rule for MIR165 vs MIR166
     if 'MIR165' in families and 'MIR166' in families and query_seq is not None:
         if len(query_seq) >= 17:
             base = query_seq[16].upper()  # 17th base (1-indexed) -> index 16
@@ -95,6 +95,19 @@ def select_best_family(family_counts, query_seq=None):
                 sys.stderr.write(f"Warning: 17th base is '{base}', not C or T. Falling back to default rule.\n")
         else:
             sys.stderr.write(f"Warning: Query sequence length {len(query_seq)} < 17. Falling back to default rule.\n")
+    
+    # Special rule for MIR170 vs MIR171
+    if 'MIR170' in families and 'MIR171' in families and query_seq is not None:
+        if len(query_seq) >= 12:
+            base = query_seq[11].upper()  # 12th base (1-indexed) -> index 11
+            if base == 'C':
+                return 'MIR170'
+            elif base == 'T':
+                return 'MIR171'
+            else:
+                sys.stderr.write(f"Warning: 12th base is '{base}', not C or T. Falling back to default rule.\n")
+        else:
+            sys.stderr.write(f"Warning: Query sequence length {len(query_seq)} < 12. Falling back to default rule.\n")
     
     # Default rule
     items = list(family_counts.items())
@@ -116,6 +129,11 @@ def read_best_file(file_handle):
         yield query, target
 
 def read_fasta(fasta_file):
+    """
+    Read FASTA file and return a dictionary {header: sequence}.
+    Header is taken as the entire line after '>' (without leading/trailing spaces).
+    Sequence lines are concatenated.
+    """
     seq_dict = {}
     current_header = None
     current_seq = []
@@ -145,7 +163,7 @@ def main():
     parser = argparse.ArgumentParser(description='Merge best score file by query, summarize target families per query.')
     parser.add_argument('-i', '--input', help='Input best score file (default: stdin)')
     parser.add_argument('-o', '--output', help='Output file (default: stdout)')
-    parser.add_argument('-f', '--fasta', help='FASTA file containing query sequences (required for special 165/166 rule)')
+    parser.add_argument('-f', '--fasta', help='FASTA file containing query sequences (required for special rules)')
     args = parser.parse_args()
 
     # Open input
