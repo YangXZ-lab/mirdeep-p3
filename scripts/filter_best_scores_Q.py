@@ -3,7 +3,6 @@
 # Copyright 2026 Jiawen Zhao.
 # All rights reserved.
 
-
 """
 filter_best_scores_Q.py
 
@@ -25,8 +24,8 @@ Input: tab-separated with columns:
 Output: same format, filtered.
 
 Usage:
-    python filter_best_scores_by_query.py -i scores.txt -o best_scores.txt
-    cat scores.txt | python filter_best_scores_by_query.py > best_scores.txt
+    python filter_best_scores_Q.py -i scores.txt -o best_scores.txt
+    cat scores.txt | python filter_best_scores_Q.py > best_scores.txt
 """
 
 import sys
