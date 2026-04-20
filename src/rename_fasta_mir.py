@@ -10,10 +10,10 @@ Read a FASTA file where each sequence header has the format:
     >MIR<old_number>-isoform<isoform_num>-<suffix>
 or >MIRN<old_number>-isoform<isoform_num>-<suffix>
 and convert each header to:
-    ><prefix><counter>-isoform1-<suffix>
-where <prefix> is the original "MIR" or "MIRN", and <counter> starts from a
-user‑supplied value and increments by 1 for each sequence.
+    >MIR<counter>-isoform1-<suffix>
+where <counter> starts from a user‑supplied value and increments by 1 for each sequence.
 The sequence lines are copied unchanged.
+Note: Output always uses "MIR" prefix (never "MIRN").
 
 Usage:
     python rename_fasta_mir.py -i input.fasta -s 11100 -o output.fasta
@@ -45,13 +45,15 @@ def generate_new_header(prefix, old_number, isoform_num, suffix, counter):
     """
     Generate the new header line (without the leading '>')
     using the current counter.
-    Format: <prefix><counter>-isoform1-<suffix>
+    Format: MIR<counter>-isoform1-<suffix>
+    Note: Output always uses "MIR" prefix regardless of input prefix.
     """
-    return f"{prefix}{counter}-isoform1-{suffix}"
+    # Force output to use "MIR" prefix (never "MIRN")
+    return f"MIR{counter}-isoform1-{suffix}"
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Rename MIR/MIRN isoform FASTA headers by replacing the numeric part with a running counter."
+        description="Rename MIR/MIRN isoform FASTA headers to MIR<counter>-isoform1-<suffix>."
     )
     parser.add_argument('-i', '--input', required=True,
                         help='Input FASTA file')
