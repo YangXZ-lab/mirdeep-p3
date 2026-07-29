@@ -179,13 +179,41 @@ pytest -q
 # or
 bash tests/run_smoke_test.sh
 ```
-## Construct new core dataset
+## Construct new core dataset and evaluation
 ```bash
-python /nfs/users/zhaojw/software/github/miRDeep-P3/bin/mirdp3_core_build.py \
+python scripts/mirdp3_core_build.py \
 -p data/isoform-in.fa \ ##old core dataset
 -i data/isoform-out-total_unique.fa \ ##new miRNA
 -s 12178 \ ##family number
 -o test/PmiREN-v2 ##output
+
+#evaluate the new core dataset
+##1. build index
+makeblastdb -in test/PmiREN-v2/isoform-in-v2.fa \
+-dbtype nucl \
+-out test/index/isoform-in-v2
+##2. blastn
+blastn -task blastn-short \
+-query test/PmiREN-v2/isoform-in-v2.fa \
+-db test/index/isoform-in-v2 \
+-outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue qseq sseq" \
+-out test/PmiREN-v2/isoform-in-v2.aln \
+-num_threads 14
+##3. filtering and scoring
+awk '$4>=16{ print $0 }' test/PmiREN-v2/isoform-in-v2.aln > test/PmiREN-v2/isoform-in-v2.aln.filter
+
+python bin/bowtie_scoring_blastn.py \
+-i test/PmiREN-v2/isoform-in-v2.aln.filter \
+-f test/PmiREN-v2/isoform-in-v2.fa \
+-o test/PmiREN-v2/isoform-in-v2.aln.filter.score
+##4. Statistics and Visualization
+Rscript scripts/classify_scores.R \
+-i test/PmiREN-v2/isoform-in-v2.aln.filter.score \
+-o test/PmiREN-in-v2-classify
+###category1 only aligned to itself
+###category2.1 only aligned to members of the same family
+###category2.2 only aligned to members of the different family
+###category2.3 aligned to members of the same and the different family
 ```
 
 CI (GitHub Actions) should validate:
