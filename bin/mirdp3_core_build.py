@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# Copyright 2026 Jiawen Zhao.
+# All rights reserved.
+
 """
 PmiREN-core V2 construction pipeline.
 
