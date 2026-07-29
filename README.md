@@ -179,6 +179,14 @@ pytest -q
 # or
 bash tests/run_smoke_test.sh
 ```
+## Construct new core dataset
+```bash
+python /nfs/users/zhaojw/software/github/miRDeep-P3/bin/mirdp3_core_build.py \
+-p data/isoform-in.fa \ ##old core dataset
+-i data/isoform-out-total_unique.fa \ ##new miRNA
+-s 12178 \ ##family number
+-o test/PmiREN-v2 ##output
+```
 
 CI (GitHub Actions) should validate:
 - Lint/format
