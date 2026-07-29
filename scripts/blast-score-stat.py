@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2026 Jiawen Zhao.
+# All rights reserved.
+
 """
 For each query in the alignment score file, keep only the alignment with the
 highest total score, and output query, target family, and score.
