@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2026 Jiawen Zhao.
+# All rights reserved.
+
 """
 Accurate scoring of miRNA alignments from BLASTn‑short output.
 
