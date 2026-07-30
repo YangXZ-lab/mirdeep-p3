@@ -214,6 +214,12 @@ Rscript scripts/classify_scores.R \
 ###category2.1 only aligned to members of the same family
 ###category2.2 only aligned to members of the different family
 ###category2.3 aligned to members of the same and the different family
+
+##Perform sequence deduplication before processing##
+python scripts/dedup_seq.py \
+-i data/isoform-out-total_unique.fa \
+--uni data/isoform-out-total_unique.fa \
+--dup data/isoform-out-total_dup.fa
 ```
 
 CI (GitHub Actions) should validate:
