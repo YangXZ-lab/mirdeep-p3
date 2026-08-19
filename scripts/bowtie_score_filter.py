@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# Copyright 2026 Jiawen Zhao.
-# All rights reserved.
-
 """
 Filter pairwise alignment scores: for each query, keep rows with the highest
 total score. In case of ties, prefer lower values of score1, then score2,
