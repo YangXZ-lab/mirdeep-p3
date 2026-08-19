@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# Copyright 2026 Jiawen Zhao.
-# All rights reserved.
-
 """
 Split miRNA FASTA sequences into host and guest sets based on family size.
 
-For each family (numeric ID >= -s/--start):
+Two modes (mutually exclusive):
+  -s/--start   : families with numeric ID >= start are processed; others go to guest.
+  -f/--fasta   : families present in this FASTA are **known** and go entirely to guest;
+                  all other families are processed.
+
+For families being processed:
   - <=5 members : 1 host (rest guest)
   - 6-10 members: 2 hosts (rest guest)
   - >10 members : 3 hosts (rest guest)
 Selection of hosts: if a -m mapping file is provided, prefer higher weight
 (third column); ties are broken by larger count (suffix number), then longer
-sequence, then random.  If a sequence has no weight, it is treated as 0.
-
-Families with ID < start go entirely to guest.
+sequence, then random. If a sequence has no weight, it is treated as 0.
 """
 
 import argparse
@@ -46,12 +45,15 @@ def parse_fasta(filepath):
 
 def parse_header(header):
     """
-    Extract family and count from header like 'MIR12336-rename1-1'.
-    Returns (family, count) or None if format doesn't match.
+    Extract family and count from header like 'MIR12336-rename1-1' or 'MIR12197-rename2'.
+    The trailing '-count' is optional (default 0).
+    Returns (family_str, count_int) or None if format doesn't match.
     """
-    m = re.match(r'^(MIRN?\d+)-rename\d+-(\d+)$', header)
+    m = re.match(r'^(MIRN?\d+)-rename\d+(?:-(\d+))?$', header)
     if m:
-        return m.group(1), int(m.group(2))
+        family = m.group(1)
+        count = int(m.group(2)) if m.group(2) else 0
+        return family, count
     return None
 
 def family_numeric_id(family_str):
@@ -85,6 +87,26 @@ def load_weights(weight_file):
             weights[hdr] = w
     return weights
 
+def parse_known_families(fasta_file):
+    """
+    Extract family identifiers from a reference FASTA.
+    Headers like '>MIR1432-isoform11-2' yield 'MIR1432'.
+    Returns a set of family strings (e.g., 'MIR1432').
+    """
+    families = set()
+    with open(fasta_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith('>'):
+                # Take the first word after '>'
+                m = re.match(r'^>(\S+)', line)
+                if m:
+                    hdr = m.group(1)
+                    m2 = re.match(r'(MIRN?\d+)', hdr)
+                    if m2:
+                        families.add(m2.group(1))
+    return families
+
 def select_hosts(members, num_hosts):
     """
     members: list of (header, seq, count, weight)
@@ -95,9 +117,7 @@ def select_hosts(members, num_hosts):
     take = min(num_hosts, n)
     if take == 0:
         return []
-    # Sort by weight desc, count desc, length desc
     members_sorted = sorted(members, key=lambda x: (-x[3], -x[2], -len(x[1])))
-    # Break ties randomly within groups that have identical weight, count, and length
     selected = []
     i = 0
     while i < len(members_sorted) and len(selected) < take:
@@ -121,43 +141,56 @@ def main():
     parser = argparse.ArgumentParser(
         description='Select host sequences per family based on count, length, and optional weight.')
     parser.add_argument('-i', '--input', required=True, help='Input FASTA file')
-    parser.add_argument('-s', '--start', type=int, required=True,
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('-s', '--start', type=int,
                         help='Numeric threshold: families with ID >= start are processed.')
+    group.add_argument('-f', '--fasta', type=str,
+                        help='Reference FASTA: families in this file are known and go entirely to guest.')
     parser.add_argument('-m', '--weight', default=None,
                         help='Optional weight file (two or three columns: name, family, weight)')
     parser.add_argument('--host', required=True, help='Output host FASTA')
     parser.add_argument('--guest', required=True, help='Output guest FASTA')
     args = parser.parse_args()
 
-    random.seed(42)  # reproducibility
+    random.seed(42)
 
     sequences = parse_fasta(args.input)
-
-    # Load weights if provided
     weights = {}
     if args.weight:
         weights = load_weights(args.weight)
 
-    # Group by family, storing also the weight for each member
-    family_map = defaultdict(list)  # family -> [(header, seq, count, weight), ...]
-    unparsed = []  # headers that didn't match pattern -> guest
+    known_families = set()
+    if args.fasta:
+        known_families = parse_known_families(args.fasta)
+        sys.stderr.write(f"Loaded {len(known_families)} known families from {args.fasta}\n")
+
+    family_map = defaultdict(list)
+    unparsed = []
 
     for hdr, seq in sequences:
         info = parse_header(hdr)
         if info:
             family, count = info
-            w = weights.get(hdr, 0.0)   # default 0 if not in weight file
+            w = weights.get(hdr, 0.0)
             family_map[family].append((hdr, seq, count, w))
         else:
+            sys.stderr.write(f"Warning: unparseable header '{hdr}', placing in guest.\n")
             unparsed.append((hdr, seq))
 
     host_entries = []
     guest_entries = []
 
     for family, members in family_map.items():
-        fid = family_numeric_id(family)
-        # If below threshold, entire family goes to guest
-        if fid < args.start:
+        guest_only = False
+        if args.fasta:
+            if family in known_families:
+                guest_only = True
+        else:
+            fid = family_numeric_id(family)
+            if fid < args.start:
+                guest_only = True
+
+        if guest_only:
             for hdr, seq, _, _ in members:
                 guest_entries.append((hdr, seq))
             continue
@@ -179,11 +212,9 @@ def main():
             else:
                 guest_entries.append((hdr, seq))
 
-    # Unparsed headers go to guest
     for hdr, seq in unparsed:
         guest_entries.append((hdr, seq))
 
-    # Write outputs
     with open(args.host, 'w') as fh:
         for hdr, seq in host_entries:
             fh.write(f">{hdr}\n{seq}\n")
