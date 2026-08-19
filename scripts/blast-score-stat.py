@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# Copyright 2026 Jiawen Zhao.
-# All rights reserved.
-
 """
 For each query in the alignment score file, keep only the alignment with the
 highest total score, and output query, target family, and score.
@@ -10,7 +6,6 @@ highest total score, and output query, target family, and score.
 
 import sys
 import argparse
-from collections import defaultdict
 
 def extract_family(name):
     """Extract the family name from a miRNA isoform ID (e.g., MIR1030-isoform2-7 -> MIR1030)."""
@@ -23,10 +18,25 @@ def main():
     parser.add_argument('-o', '--output', required=True, help='Output file')
     args = parser.parse_args()
 
-    # Read all alignments, keep the best score per query
-    best = {}  # query -> (family, score)
+    best = {}   # query -> (family, score)
+
     with open(args.input, 'r') as fin:
-        header = fin.readline().strip()  # skip header
+        first_line = fin.readline().strip()
+        # If the first line looks like a header (starts with "query"), skip it
+        if first_line.startswith("query") or first_line.startswith("#"):
+            pass   # header skipped
+        else:
+            # Treat first line as data
+            parts = first_line.split('\t')
+            if len(parts) >= 6:
+                query = parts[0]
+                reference = parts[1]
+                total_score = float(parts[5])
+                family = extract_family(reference)
+                if query not in best or total_score > best[query][1]:
+                    best[query] = (family, total_score)
+
+        # Process remaining lines
         for line in fin:
             line = line.strip()
             if not line:
