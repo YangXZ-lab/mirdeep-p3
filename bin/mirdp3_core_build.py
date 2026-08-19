@@ -52,6 +52,8 @@ def main():
                         help="Clean (remove) output directory if it already exists before running")
     parser.add_argument('--threshold', type=float, default=75.0,
                         help="Score threshold for single/multi separation (default: 75)")
+    parser.add_argument('-t', '--threads', type=int, default=1,
+                        help="Number of threads to use for parallel processing")
     args = parser.parse_args()
 
     # ---- Determine project root ----
@@ -61,6 +63,7 @@ def main():
     data_dir = project_root / 'data'
 
     # ---- Set paths ----
+    threads = args.threads
     pmiren_fa = args.pmiren if args.pmiren else str(data_dir / 'isoform-in.fa')
     input_fa = os.path.abspath(args.input)
     output_dir = os.path.abspath(args.output)
@@ -131,7 +134,7 @@ def main():
         f"-db {index_dir}/isoform-in "
         f"-outfmt \"6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue qseq sseq\" "
         f"-out {out_aln} "
-        f"-num_threads 14",
+        f"-num_threads {threads}",
         "Aligning isoform-out-total against isoform-in (BLASTn-short)"
     )
 
@@ -190,7 +193,7 @@ def main():
         f"-db {index_dir}/isoform-out-nonaln "
         f"-outfmt \"6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue qseq sseq\" "
         f"-out {nonaln_aln} "
-        f"-num_threads 14",
+        f"-num_threads {threads}",
         "Self‑aligning unaligned sequences (BLASTn-short)"
     )
 
