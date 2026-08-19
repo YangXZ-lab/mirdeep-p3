@@ -185,6 +185,7 @@ python scripts/mirdp3_core_build.py \
 -p data/PmiREN-20260810-isoform.fa \ ##old core dataset
 -i example/PmiREN2.0_basic_info_MIR_unqiue.fasta \ ##non-redundant novel miRNAs dataset
 -s 12178 \ ##family number
+-t 14 \ ##thraeds
 -o test/PmiREN-v2 ##output
 
 #evaluate the new core dataset
