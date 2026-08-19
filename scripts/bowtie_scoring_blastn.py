@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# Copyright 2026 Jiawen Zhao.
-# All rights reserved.
-
 """
 Accurate scoring of miRNA alignments from BLASTn‑short output.
 
@@ -86,7 +82,7 @@ def compute_penalties(qseq, sseq, qstart, qend, sstart, send, q_aln, s_aln):
             else:
                 internal_pen += 1.0
         if (ref_pos == 10 or ref_pos == 11) and qb != sb:
-            pos_pen += 1
+            pos_pen += 0.5 ##try 0.5
 
     # Internal
     for i in range(internal_start, internal_end):
@@ -97,7 +93,7 @@ def compute_penalties(qseq, sseq, qstart, qend, sstart, send, q_aln, s_aln):
         if qb != sb:
             internal_pen += 1.0
         if (ref_pos == 10 or ref_pos == 11) and qb != sb:
-            pos_pen += 1
+            pos_pen += 0.5 ##try 0.5
 
     # Right overhang
     for i in range(right_start, len(q_global)):
@@ -111,10 +107,10 @@ def compute_penalties(qseq, sseq, qstart, qend, sstart, send, q_aln, s_aln):
             else:
                 internal_pen += 1.0
         if (ref_pos == 10 or ref_pos == 11) and qb != sb:
-            pos_pen += 1
+            pos_pen += 0.5 ##try 0.5
 
     mismatch_penalty = internal_pen + overhang5_pen + overhang3_pen
-    length_penalty = abs(len(qseq) - len(sseq)) * 1.0
+    length_penalty = abs(len(qseq) - len(sseq)) * 0.5
     return mismatch_penalty, pos_pen, length_penalty
 
 
