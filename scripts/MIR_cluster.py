@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# Copyright 2026 Jiawen Zhao.
-# All rights reserved.
-
 """
 Cluster miRNAs based on pairwise relationships provided in a two-column file.
 Each line should contain at least two tab-separated fields:
