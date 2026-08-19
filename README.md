@@ -229,6 +229,12 @@ python bin/dedup_seq.py \
 --uni example/PmiREN2.0_basic_info_MIR_unique.fasta \
 --dup example/PmiREN2.0_basic_info_MIR_dup.fasta
 
+##Remove the same seq(optional)
+python bin/remove_matched_seq.py \
+-i example/PmiREN2.0_basic_info.fasta \
+-r data/PmiREN-20260810-isoform.fa \
+-o example/PmiREN2.0.fasta
+
 ##Check the final miRNA family number
 cat data/PmiREN-20260810-isoform.fa | grep ">" | sort -V | tail
 ```
