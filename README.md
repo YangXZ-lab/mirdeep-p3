@@ -182,8 +182,8 @@ bash tests/run_smoke_test.sh
 ## Construct new core dataset and evaluation
 ```bash
 python scripts/mirdp3_core_build.py \
--p data/isoform-in.fa \ ##old core dataset
--i data/isoform-out-total_unique.fa \ ##new miRNA
+-p data/PmiREN-20260810-isoform.fa \ ##old core dataset
+-i example/PmiREN2.0_basic_info_MIR_unqiue.fasta \ ##non-redundant novel miRNAs dataset
 -s 12178 \ ##family number
 -o test/PmiREN-v2 ##output
 
@@ -192,7 +192,7 @@ python scripts/mirdp3_core_build.py \
 makeblastdb -in test/PmiREN-v2/isoform-in-v2.fa \
 -dbtype nucl \
 -out test/index/isoform-in-v2
-##2. blastn
+##2. self-alignment using blastn
 blastn -task blastn-short \
 -query test/PmiREN-v2/isoform-in-v2.fa \
 -db test/index/isoform-in-v2 \
@@ -200,15 +200,19 @@ blastn -task blastn-short \
 -out test/PmiREN-v2/isoform-in-v2.aln \
 -num_threads 14
 ##3. filtering and scoring
-awk '$4>=16{ print $0 }' test/PmiREN-v2/isoform-in-v2.aln > test/PmiREN-v2/isoform-in-v2.aln.filter
+awk '$4>=13{ print $0 }' test/PmiREN-v2/isoform-in-v2.aln > test/PmiREN-v2/isoform-in-v2.aln.filter
 
 python bin/bowtie_scoring_blastn.py \
 -i test/PmiREN-v2/isoform-in-v2.aln.filter \
 -f test/PmiREN-v2/isoform-in-v2.fa \
 -o test/PmiREN-v2/isoform-in-v2.aln.filter.score
-##4. Statistics and Visualization
-Rscript scripts/classify_scores.R \
+##4. Deduplication
+python script/dedup_score_pair.py \
 -i test/PmiREN-v2/isoform-in-v2.aln.filter.score \
+-o test/PmiREN-v2/isoform-in-v2.aln.filter.score.best
+##5. Statistics and Visualization
+Rscript scripts/classify_scores.R \
+-i test/PmiREN-v2/isoform-in-v2.aln.filter.score.best \
 -o test/PmiREN-in-v2-classify
 ###category1 only aligned to itself
 ###category2.1 only aligned to members of the same family
@@ -216,10 +220,9 @@ Rscript scripts/classify_scores.R \
 ###category2.3 aligned to members of the same and the different family
 
 ##Perform sequence deduplication before processing##
-python scripts/dedup_seq.py \
--i data/isoform-out-total_unique.fa \
---uni data/isoform-out-total_unique.fa \
---dup data/isoform-out-total_dup.fa
+python bin/dedup_family.py \
+-i example/PmiREN2.0_basic_info_MIR.fasta \
+-o example/PmiREN2.0_basic_info_MIR_unqiue.fasta
 ```
 
 CI (GitHub Actions) should validate:
