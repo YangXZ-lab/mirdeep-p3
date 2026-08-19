@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# Copyright 2026 Jiawen Zhao.
-# All rights reserved.
-
 """
 Filter alignment scores based on per‑query maximum and user thresholds.
 
 Usage:
-    python filter_scores.py -s scores.tsv -m max.tsv -t 55 -d 20 -o out.tsv
+    python blast-score-filter.py -s scores.tsv -m max.tsv -t 55 -d 20 -o out.tsv
 """
 
 import argparse
