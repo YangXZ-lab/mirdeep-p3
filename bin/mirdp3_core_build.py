@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# Copyright 2026 Jiawen Zhao.
-# All rights reserved.
-
 """
 PmiREN-core V2 construction pipeline.
 
@@ -139,10 +136,10 @@ def main():
     )
 
     # ===================================================================
-    # STEP 2: Pre‑filter (length >= 16) and score
+    # STEP 2: Pre‑filter (length >= 13) and score
     # ===================================================================
-    run_cmd(f"cat {out_aln} | awk '$4>=16{{ print $0 }}' > {out_aln_filter}",
-            "Filtering alignments with length >= 16")
+    run_cmd(f"cat {out_aln} | awk '$4>=13{{ print $0 }}' > {out_aln_filter}",
+            "Filtering alignments with length >= 13")
 
     run_cmd(f"cat {pmiren_fa} {input_fa} > {merged_fa}",
             "Merging isoform-in and isoform-out-total for scoring")
@@ -156,7 +153,7 @@ def main():
     run_cmd(f"python {stat_script} -i {out_aln_score} -o {out_aln_score_stat}",
             "Extracting per‑query best score")
 
-    run_cmd(f"python {filter_script} -s {out_aln_score} -m {out_aln_score_stat} -o {out_aln_score_stat_filter}",
+    run_cmd(f"python {filter_script} -s {out_aln_score} -t 70 -m {out_aln_score_stat} -o {out_aln_score_stat_filter}",
             "Applying dynamic score threshold to alignments")
 
     # ===================================================================
@@ -200,8 +197,8 @@ def main():
     # ===================================================================
     # STEP 7: Filter, score and separate single vs multi
     # ===================================================================
-    run_cmd(f"cat {nonaln_aln} | awk '$4>=16{{ print $0 }}' > {nonaln_aln_filter}",
-            "Filtering self‑alignments with length >= 16")
+    run_cmd(f"cat {nonaln_aln} | awk '$4>=13{{ print $0 }}' > {nonaln_aln_filter}",
+            "Filtering self‑alignments with length >= 13")
 
     run_cmd(f"python {scoring_script} -i {nonaln_aln_filter} -f {nonaln_fa} -o {nonaln_aln_score}",
             "Scoring self‑alignments")
@@ -244,6 +241,7 @@ def main():
     # ===================================================================
     run_cmd(
         f"python {remap_script} --alncl {out_aln_anno} "
+        f"-f {input_fa} "
         f"--single {nonaln_single} "
         f"--multi {nonaln_multi_cl} "
         f"-s {args.start} "
@@ -268,6 +266,7 @@ def main():
     run_cmd(
         f"python {split_script} -m {rename_updated_map} "
         f"-i {rename_fa} "
+        f"-f {pmiren_fa} "
         f"-s {args.start} "
         f"--host {host_fa} "
         f"--guest {guest_fa}",
