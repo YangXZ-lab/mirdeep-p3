@@ -71,26 +71,41 @@ def resolve_special_pair(f1, f2, query_seq, families_present, family_scores):
     """
     # MIR165 vs MIR166
     if {f1, f2} == {'MIR165', 'MIR166'} and query_seq is not None:
-        if len(query_seq) >= 17:
-            base = query_seq[16].upper()   # 17th base -> index 16
+        if len(query_seq) >= 21:
+            check_pos = 16      
+        elif len(query_seq) <= 20:
+            check_pos = 15      
+        else:
+            return None        
+        if len(query_seq) > check_pos:
+            base = query_seq[check_pos].upper()
             if base == 'C':
                 return 'MIR165'
             elif base == 'T':
                 return 'MIR166'
-        return None  # fallback if conditions not met
+        return None
+    
     # MIR170 vs MIR171
     if {f1, f2} == {'MIR170', 'MIR171'} and query_seq is not None:
-        if len(query_seq) >= 12:
-            base = query_seq[11].upper()   # 12th base -> index 11
+        if len(query_seq) >= 21:
+            check_pos = 11   
+        elif len(query_seq) <= 20:
+            check_pos = 10   
+        else:
+            return None      
+
+        if len(query_seq) > check_pos:
+            base = query_seq[check_pos].upper()
             if base == 'C':
                 return 'MIR170'
             elif base == 'T':
                 return 'MIR171'
         return None
+    
     # MIR156 vs MIR157
     if {f1, f2} == {'MIR156', 'MIR157'} and query_seq is not None:
         seq_len = len(query_seq)
-        if seq_len == 20:
+        if seq_len <= 20:
             if seq_len >= 11:
                 base = query_seq[10].upper()   # 11th base -> index 10
                 if base == 'G':
@@ -110,14 +125,22 @@ def resolve_special_pair(f1, f2, query_seq, families_present, family_scores):
 def decide_family(family_scores, query_seq=None):
     """
     Decide the best family for a query given a dict of family -> best_score.
-    Special rules are applied to resolve ties/conflicts for known pairs.
+    If any family has a perfect score of 100.0, that family is chosen directly
+    (ties broken by smallest numeric family). Otherwise, special rules are applied
+    to resolve conflicts for known pairs (MIR156/157, MIR165/166, MIR170/171).
     """
     if not family_scores:
         return None
 
-    # 1. Apply special rules to merge predefined pairs if both present.
-    #    We repeatedly apply rules as long as a pair exists.
-    #    After merging, we keep the higher score as the score for the chosen family.
+    max_score = max(family_scores.values())
+
+    # Perfect score -> pick directly, skip special rules
+    if max_score == 100.0:
+        best_families = [fam for fam, scr in family_scores.items() if scr == 100.0]
+        best_families.sort(key=extract_number)
+        return best_families[0]
+
+    # ---- Apply special pair rules (only when no 100.0) ----
     applied = True
     while applied:
         applied = False
@@ -126,12 +149,9 @@ def decide_family(family_scores, query_seq=None):
             for f2 in families:
                 if f1 >= f2:
                     continue
-                # Check if this pair is a special pair and both are present
                 winner = resolve_special_pair(f1, f2, query_seq, set(families), family_scores)
                 if winner is not None:
-                    # Merge: winner keeps the max of the two scores
                     merged_score = max(family_scores[f1], family_scores[f2])
-                    # Remove both, add winner
                     del family_scores[f1]
                     del family_scores[f2]
                     family_scores[winner] = merged_score
@@ -140,11 +160,9 @@ def decide_family(family_scores, query_seq=None):
             if applied:
                 break
 
-    # 2. Find the maximum score among the remaining families
+    # ---- Final selection among remaining families ----
     max_score = max(family_scores.values())
     best_families = [fam for fam, scr in family_scores.items() if scr == max_score]
-
-    # 3. If only one, use it. If multiple, choose the one with the smallest numeric part.
     best_families.sort(key=extract_number)
     return best_families[0]
 
