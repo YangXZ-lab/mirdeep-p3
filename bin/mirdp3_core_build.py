@@ -244,7 +244,7 @@ def main():
     # ===================================================================
     run_cmd(
         f"python {remap_script} --alncl {out_aln_anno} "
-        f"-f {input_fa} "
+        f"-f {pmiren_fa} "
         f"--single {nonaln_single} "
         f"--multi {nonaln_multi_cl} "
         f"-s {args.start} "
