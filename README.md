@@ -221,8 +221,12 @@ Rscript scripts/classify_scores.R \
 
 ##Perform sequence deduplication before processing##
 python bin/dedup_family.py \
+-i example/PmiREN2.0_basic_info.fasta \
+-o example/PmiREN2.0_basic_info_MIR.fasta
+python bin/dedup_seq.py \
 -i example/PmiREN2.0_basic_info_MIR.fasta \
--o example/PmiREN2.0_basic_info_MIR_unqiue.fasta
+--uni example/PmiREN2.0_basic_info_MIR_unique.fasta \
+--dup example/PmiREN2.0_basic_info_MIR_dup.fasta
 ```
 
 CI (GitHub Actions) should validate:
