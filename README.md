@@ -228,6 +228,9 @@ python bin/dedup_seq.py \
 -i example/PmiREN2.0_basic_info_MIR.fasta \
 --uni example/PmiREN2.0_basic_info_MIR_unique.fasta \
 --dup example/PmiREN2.0_basic_info_MIR_dup.fasta
+
+##Check the final miRNA family number
+cat data/PmiREN-20260810-isoform.fa | grep ">" | sort -V | tail
 ```
 
 CI (GitHub Actions) should validate:
