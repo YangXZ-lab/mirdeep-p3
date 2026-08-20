@@ -416,11 +416,11 @@ def process_worker(args, input_file, prefix, root, genome, index, logf):
 # ----------------------------------------------------------------------
 def run(args):
     """Main entry point for identification subcommand."""
-    # 1. 加载配置数据
+    # 1. Load config and ensure defaults
     ensure_defaults(args)
     cfg = getattr(args, 'config_data', {})
 
-    # 2. 将 config 中的值合并到 args（命令行优先）
+    # 2. Combine config values into args (command line takes precedence)
     config_mapping = {
         'i/input': 'input',
         'o/output': 'output',
@@ -452,7 +452,7 @@ def run(args):
         if cfg_key in cfg and getattr(args, attr, None) is None:
             setattr(args, attr, cfg[cfg_key])
 
-    # 3. 依赖检查（使用 getattr 安全获取，避免 AttributeError）
+    # 3. Dependency detection
     required_tools = {
         'bowtie': getattr(args, 'bowtie', None) or cfg.get('bowtie'),
         'bowtie-build': getattr(args, 'bowtie_build', None) or cfg.get('bowtie-build'),
@@ -461,7 +461,7 @@ def run(args):
     }
     if getattr(args, 'reads_clean', True):
         required_tools['trim_galore'] = getattr(args, 'trim_galore', None) or cfg.get('trim_galore')
-    # 可选工具（如果指定了路径才检测）
+    # Optional tools for filtering and processing
     for opt_tool in ['bedtools', 'seqkit', 'cutadapt']:
         val = getattr(args, opt_tool, None) or cfg.get(opt_tool)
         if val:
@@ -553,7 +553,7 @@ def run(args):
         for inp, pref, logf in zip(input_files, prefixes, log_files):
             process_worker(args, inp, pref, output_root, genome, args.index, logf)
 
-    # ---- 清理临时文件 ----
+    # ---- Clean temp file ----
     if args.clean:
         print("Cleaning temporary directories...")
         for pref in set(prefixes):
