@@ -145,21 +145,31 @@ mirdeep-p3 --help
 
 ### miRNA identification from sRNA-Seq
 ```bash
-##1 Single file
+##1 Single input
 mirdeep-p3 identification \
   -i <sample_1.fq.gz> \
   -o <output_dir> \
   -g <genome.fasta> \
   -d <bowtie_index_prefix> \
   -t <threads>
+
+##2 Multiple inputs
+mirdeep-p3 identification \
+  -i <sample_1.fq.gz,sample_2.fq.gz,sample_3.fq.gz> \
+  -o <output_dir> \
+  -g <genome.fasta> \
+  -d <bowtie_index_prefix> \
+  -t <threads> \
+  -p <progress>
 ```
 | Parameter | Description | Example |
 |---|---|---|
-| `-i` | Raw sequencing data (FASTQ/FASTA/compressed files，multiple samples can be separated by commas) | `[e.g., sample_1.fq or sample_1.fq,sample_2.fq,sample_3.fq]` |
-| `-o` | Output dir | `[e.g., output]` |
-| `-g` | Genome file of fasta file | `[e.g., genome.fasta]` |
-| `-d` | The bowtie index of the genome file (optional) | `[e.g., bowtie_index_prefix]` |
-| `-t` | The number of threads used in mirdeep-p3 | `[e.g., 14]` |
+| `-i,--input` | Raw sequencing data (FASTQ/FASTA/compressed files，multiple samples can be separated by commas). | `[e.g., sample_1.fq or sample_1.fq,sample_2.fq,sample_3.fq]` |
+| `-o,--output` | Output dir. | `[e.g., output]` |
+| `-g,--genome` | Genome file of fasta file. | `[e.g., genome.fasta]` |
+| `-d,--index` | Path prefix of a pre-built bowtie index (optional). If not specified, the index is built automatically under the output directory; provide a prefix here to reuse an existing index and skip building. | `[e.g., bowtie_index_prefix]` |
+| `-t,--threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 14]` |
+| `-p,--progress` | Number of samples/files processed in parallel (optional, default: 1). For example, if 3 input files are provided, `-p 3` will process all three simultaneously. | `[e.g., 3]` |
 
 ### Advanced
 - Resume: `[pipeline framework option]`
