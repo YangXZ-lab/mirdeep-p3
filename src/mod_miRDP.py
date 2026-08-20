@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2026 Jiawen Zhao.
+# All rights reserved.
 """
 mod_miRDP.py - Core miRNA prediction algorithm
 """
