@@ -140,10 +140,10 @@ Key parameters:
 ## Usage
 ### Show help
 ```bash
-[main_command] --help
+mirdeep-p3 --help
 ```
 
-### Typical run
+### miRNA identification from sRNA-Seq
 ```bash
 [main_command] \
   --samples samples.tsv \
