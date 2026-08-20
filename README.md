@@ -157,9 +157,9 @@ mirdeep-p3 identification \
 |---|---|---|
 | `-i` | Raw sequencing data (FASTQ/FASTA/compressed files，multiple samples can be separated by commas) | `sample_1.fq`or`sample_1.fq,sample_2.fq,sample_3.fq` |
 | `-o` | Output dir | `output` |
-| `-g` | Genome file of fasta file | genome.fasta |
-| `-d` | The bowtie index of the genome file (optional) | bowtie_index_prefix |
-| `-t` | The number of threads used in mirdeep-p3 | 14 |
+| `-g` | Genome file of fasta file | `genome.fasta` |
+| `-d` | The bowtie index of the genome file (optional) | `bowtie_index_prefix` |
+| `-t` | The number of threads used in mirdeep-p3 | `14` |
 
 ### Advanced
 - Resume: `[pipeline framework option]`
