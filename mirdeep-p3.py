@@ -1,0 +1,448 @@
+#!/usr/bin/env python3
+"""
+MirDeep-P3: miRNA prediction and analysis pipeline.
+Main entry point. Handles subcommands, step aggregation, and configuration.
+"""
+
+import os
+import sys
+import argparse
+from pathlib import Path
+from datetime import datetime
+
+# ----------------------------------------------------------------------
+# Locate the project root (where this script resides) and add src/ to path.
+PROJECT_ROOT = Path(__file__).resolve().parent
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+# ----------------------------------------------------------------------
+# Project modules
+from version import __version__
+from utils.config import load_config
+from utils.help_display import print_combined_step_help
+from commands import identification, annotation, analysis
+
+# ----------------------------------------------------------------------
+# Software banner (displayed on every run)
+BANNER = r"""
+╔══════════════════════════════════════════════════════════════╗
+║                    MirDeep-P3  v{version:<8}                     ║
+║        miRNA discovery and analysis from deep sequencing     ║
+╚══════════════════════════════════════════════════════════════╝
+"""
+GITHUB_LINK = "https://github.com/yourlab/mirdeep-p3"
+DESCRIPTION = "Comprehensive miRNA prediction, annotation, and downstream analysis."
+
+# ----------------------------------------------------------------------
+# Preprocess command line to support legacy "step" positional syntax.
+def preprocess_argv(argv):
+    """
+    Convert `mirdeep-p3.py step 1 ...` into `mirdeep-p3.py --step 1 ...`
+    to simplify argparse handling.
+    """
+    if len(argv) > 1 and argv[1] == "step":
+        # Replace 'step' with '--step'
+        new_argv = [argv[0], "--step"] + argv[2:]
+        return new_argv
+    return argv
+
+# ----------------------------------------------------------------------
+def parse_arguments():
+    """Build the main argument parser with subcommands and shared options."""
+    parser = argparse.ArgumentParser(
+        prog="mirdeep-p3.py",
+        description=DESCRIPTION,
+        epilog=f"Issues: {GITHUB_LINK}",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,  # We add custom help handling later
+    )
+
+    # Shared optional arguments (always available)
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"MirDeep-P3 {__version__}"
+    )
+    parser.add_argument(
+        "-h", "--help", action="store_true", help="Show this help message and exit."
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        metavar="FILE",
+        help="Configuration file (overrides command line defaults).",
+    )
+    parser.add_argument(
+        "--step",
+        type=str,
+        metavar="STEPS",
+        help="Comma-separated steps (1=identification, 2=annotation, 3=analysis).",
+    )
+
+    # Subcommands
+    subparsers = parser.add_subparsers(
+        title="subcommands",
+        dest="subcommand",
+        description="Run a specific analysis step. Use -h after a subcommand for details.",
+    )
+
+    # Identification subcommand
+    parser_ident = subparsers.add_parser(
+        "identification",
+        aliases=["1"],
+        help="Step 1: miRNA identification from deep sequencing reads.",
+        add_help=False,
+    )
+    identification.add_arguments(parser_ident)
+
+    # Annotation subcommand
+    parser_annot = subparsers.add_parser(
+        "annotation",
+        aliases=["2"],
+        help="Step 2: Annotate identified miRNAs against reference databases.",
+        add_help=False,
+    )
+    annotation.add_arguments(parser_annot)
+
+    # Analysis subcommand
+    parser_analysis = subparsers.add_parser(
+        "analysis",
+        aliases=["3"],
+        help="Downstream analyses: TFBS, target prediction, DE, functional analysis",
+        add_help=False,
+    )
+    parser_analysis.add_argument(
+        'analysis_args', nargs=argparse.REMAINDER,
+        help=argparse.SUPPRESS
+    )
+
+    return parser
+
+# ----------------------------------------------------------------------
+def show_banner():
+    """Print the software banner and version."""
+    print(BANNER.format(version=__version__))
+    print(f"Version: {__version__}  |  Issues: {GITHUB_LINK}\n")
+
+# ----------------------------------------------------------------------
+def show_combined_identification_annotation_help():
+    """Display combined help for identification + annotation, marking parameter ownership."""
+    print("""
+╔══════════════════════════════════════════════════════════════╗
+║        MirDeep-P3  combined identification + annotation      ║
+╚══════════════════════════════════════════════════════════════╝
+
+Parameters are labelled as:
+  [ID]   identification step only
+  [AN]   annotation step only
+  [BOTH] used by both steps
+
+--- Input / Output ---
+  -i, --input INPUT           [ID]   Input FASTQ/FASTA file(s), comma separated
+  -f, --file FILE             [ID]   File containing list of input files, one per line
+  -o, --output OUTPUT         [BOTH] Root output directory (will contain identification/ and annotation/ subfolders)
+  --prefix PREFIX             [AN]   Output prefix(es) for annotation (comma separated)
+
+--- Genome & Index ---
+  -g, --genome GENOME         [BOTH] Reference genome FASTA file
+  -d, --index INDEX           [BOTH] Bowtie index prefix (skip building if provided)
+
+--- Replicates & Parallelism ---
+  -r, --replicate REPLICATE   [BOTH] Replicate grouping: comma-separated counts per group
+  -t, --threads THREADS       [BOTH] Number of threads
+  -p, --progress PROGRESS     [BOTH] Number of parallel processes
+
+--- Identification specific ---
+  --type {fastq,fq,fasta,fa}  [ID]   Input file type
+  --min-len MIN_LEN           [ID]   Minimum read length
+  --max-len MAX_LEN           [ID]   Maximum read length
+  --rpm-threshold THRESH      [ID]   RPM threshold for filtering
+  --max-mappings MAX_MAP      [ID]   Maximum allowed genome mappings
+  --pre-length LENGTH         [ID]   Precursor flanking length
+  --reads_clean / --no-reads_clean [ID] Enable/disable read cleaning
+  --clean                     [ID]   Remove temp after identification (not applicable to annotation)
+
+--- Annotation specific ---
+  --prefix_miRNA PREFIX_MIRNA [AN]   miRNA prefix (e.g., 'N710')
+  --species SPECIES           [AN]   Species name (e.g., 'Arabidopsis thaliana')
+  -s, --same                  [AN]   Use same prefix for input and output (case1,case2,...)
+  --consistency CONSISTENCY   [AN]   Reference basic-info file for consistency
+  --common                    [AN]   Enable common miRNA consistency analysis
+
+--- External tool paths (if not in PATH) ---
+  --bowtie PATH               [BOTH]
+  --bowtie-build PATH         [BOTH]
+  --RNAfold PATH              [BOTH]
+  --samtools PATH             [BOTH]
+  --bedtools PATH             [BOTH]
+  --trim_galore PATH          [ID]
+  --seqkit PATH               [AN]
+
+""")
+# ----------------------------------------------------------------------
+def handle_help_request(args, parser, subcommand_parsers):
+    """
+    Custom help display logic.
+    - If --help is given with a subcommand, print banner + "Step: <name>" + subcommand help.
+    - If --help is given with --step (single step), delegate to that step's help.
+    - If --help is given with --step (multiple steps), show combined step help.
+    - Otherwise show main help.
+    """
+        
+    # Mapping for pretty step names (aliases -> canonical)
+    step_name_map = {
+        "1": "identification",
+        "identification": "identification",
+        "2": "annotation",
+        "annotation": "annotation",
+        "3": "analysis",
+        "analysis": "analysis",
+    }
+
+    if args.step and args.help:
+        steps = [s.strip() for s in args.step.split(",")]
+        norm = set()
+        for s in steps:
+            if s in ("1", "identification"): norm.add("identification")
+            elif s in ("2", "annotation"): norm.add("annotation")
+        if "identification" in norm and "annotation" in norm:
+            show_combined_identification_annotation_help()
+            sys.exit(0)
+            
+    # --- Subcommand help ---
+    if args.subcommand is not None and args.help:
+        subp = subcommand_parsers.get(args.subcommand)
+        if subp:
+            step_name = step_name_map.get(args.subcommand, args.subcommand)
+            print(f"\nStep: {step_name}\n")
+            subp.print_help()
+            sys.exit(0)
+
+    # --- Step help ---
+    if args.step is not None and not args.subcommand and args.help:
+        steps = [s.strip() for s in args.step.split(",")]
+        if len(steps) == 1:
+            # Single step -> show the corresponding subcommand's help
+            step = steps[0]
+            subp = subcommand_parsers.get(step)
+            if subp is None:
+                print(f"Error: unrecognised step '{step}'. Use 1/identification, 2/annotation, 3/analysis.")
+                sys.exit(1)
+            step_name = step_name_map.get(step, step)
+            print(f"\nStep: {step_name}\n")
+            subp.print_help()
+            sys.exit(0)
+        else:
+            # Multiple steps -> show combined placeholder help
+            print_combined_step_help(args.step)
+            sys.exit(0)
+
+    # --- Main help (or implicit help when no arguments given) ---
+    if args.help or len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit(0)
+
+# ----------------------------------------------------------------------
+def merge_config_with_args(args, parser):
+    """
+    If --config is provided, load the config file and update args with its values.
+    Command-line arguments override config file entries.
+    """
+    if args.config:
+        config_path = Path(args.config)
+        if not config_path.exists():
+            parser.error(f"Configuration file not found: {args.config}")
+        config_data = load_config(config_path)
+
+        # If step is not set on command line but is in config, use it.
+        if not args.step and "step" in config_data:
+            args.step = config_data["step"]
+
+        # For subcommands, pass config to the corresponding module later.
+        # We store config_data in args for subcommand use.
+        args.config_data = config_data
+    else:
+        args.config_data = {}
+        
+def execute_combined_identification_annotation(cli_args, project_root):
+    """Run identification then annotation, automatically routing input/output."""
+    # Build independent parsers
+    id_parser = identification.build_parser()
+    annot_parser = annotation.build_parser()
+
+    # Parse known args for each step (ignore unknown for the other)
+    id_args, _ = id_parser.parse_known_args(cli_args)
+    annot_args, _ = annot_parser.parse_known_args(cli_args)
+
+    # Determine root output directory
+    if id_args.output:
+        root_output = Path(id_args.output)
+    elif annot_args.output:
+        root_output = Path(annot_args.output)
+    else:
+        root_output = Path(f"mirdeep-identification_annotation-{datetime.now().strftime('%m%d%y-%H%M')}")
+    root_output.mkdir(parents=True, exist_ok=True)
+
+    id_output = root_output / "identification"
+    annot_output = root_output / "annotation"
+
+    # Set output for identification
+    id_args.output = str(id_output)
+
+    # Validate identification requirements
+    if not id_args.input and not id_args.file:
+        sys.exit("Error: identification requires -i/--input or -f/--file.")
+    if not id_args.genome:
+        sys.exit("Error: identification requires -g/--genome.")
+
+    # Inject project_root and run identification
+    id_args.project_root = project_root
+    identification.run(id_args)
+
+    # Read identification pipe file to get annotation input folders
+    pipe_files = sorted(id_output.glob("mirdp3-identification-*.pipe"))
+    if not pipe_files:
+        sys.exit("Error: no pipe file found in identification output.")
+    latest_pipe = pipe_files[-1]
+    input_folders = []
+    with open(latest_pipe) as pf:
+        for line in pf:
+            parts = line.strip().split('\t')
+            if len(parts) >= 2:
+                input_folders.append(parts[1])
+    if not input_folders:
+        sys.exit("Error: no output folders found in identification pipe file.")
+    annot_args.input = ",".join(input_folders)
+
+    # Set annotation output
+    annot_args.output = str(annot_output)
+
+    # Ensure annotation required arguments
+    if not annot_args.prefix_miRNA:
+        sys.exit("Error: --prefix_miRNA is required for annotation.")
+    if not annot_args.species:
+        sys.exit("Error: --species is required for annotation.")
+    # Use identification's genome if not given
+    if not annot_args.genome:
+        annot_args.genome = id_args.genome
+    if not annot_args.index:
+        annot_args.index = getattr(id_args, 'index', None)
+    if not annot_args.replicate:
+        annot_args.replicate = getattr(id_args, 'replicate', '1')
+    if not annot_args.threads:
+        annot_args.threads = getattr(id_args, 'threads', 1)
+    if not annot_args.progress:
+        annot_args.progress = getattr(id_args, 'progress', 1)
+
+    # Run annotation
+    annot_args.project_root = project_root
+    annotation.run(annot_args)
+
+    print("\nCombined identification + annotation completed successfully.")
+
+# ----------------------------------------------------------------------
+def main():
+    # Preprocess legacy 'step' positional argument
+    sys.argv = preprocess_argv(sys.argv)
+
+    if '--step' in sys.argv:
+        step_idx = sys.argv.index('--step')
+        if step_idx + 1 < len(sys.argv):
+            step_val = sys.argv[step_idx + 1]
+            steps = [s.strip() for s in step_val.split(',')]
+            norm = set()
+            for s in steps:
+                if s in ('1', 'identification'):
+                    norm.add('identification')
+                elif s in ('2', 'annotation'):
+                    norm.add('annotation')
+            if 'identification' in norm and 'annotation' in norm:
+                # This is a combined run, handle separately
+                cli_args = sys.argv[1:]  # all args except script name
+                # Remove the --step and its value from cli_args
+                del cli_args[step_idx - 1]   # -1 because cli_args index is sys.argv index - 1
+                del cli_args[step_idx - 1]   # now the next element (the step value) is removed
+                if '-h' in cli_args or '--help' in cli_args:
+                    show_combined_identification_annotation_help()
+                    sys.exit(0)
+                execute_combined_identification_annotation(cli_args, PROJECT_ROOT)
+                return
+            
+    parser = parse_arguments()
+    args = parser.parse_args()
+
+    show_banner()
+
+    # Collect subcommand parsers for custom help
+    subparsers_action = next(
+        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
+    )
+    subcommand_parsers = subparsers_action.choices
+
+    # Handle help before full processing
+    handle_help_request(args, parser, subcommand_parsers)
+
+    # Load and merge configuration
+    merge_config_with_args(args, parser)
+    
+    args.project_root = PROJECT_ROOT  # Make project root available to subcommands
+
+    # Dispatch execution
+    if args.subcommand:
+        # Single subcommand mode
+        if args.subcommand in ("analysis", "3"):
+            from commands import analysis
+            analysis.main(args.analysis_args, project_root=PROJECT_ROOT)
+            return
+
+        subcmd_module = {
+            "identification": identification,
+            "1": identification,
+            "annotation": annotation,
+            "2": annotation,
+        }.get(args.subcommand)
+        if subcmd_module:
+            subcmd_module.run(args)
+        else:
+            parser.error(f"Unknown subcommand: {args.subcommand}")
+
+    elif args.step:
+        steps = [s.strip() for s in args.step.split(",")]
+        # Normalise step names
+        step_norm = []
+        for s in steps:
+            if s in ("1", "identification"):
+                step_norm.append("identification")
+            elif s in ("2", "annotation"):
+                step_norm.append("annotation")
+            elif s in ("3", "analysis"):
+                step_norm.append("analysis")
+            else:
+                step_norm.append(s)
+
+        # Fall through to original loop for individual steps
+        step_modules = {
+            "1": identification,
+            "identification": identification,
+            "2": annotation,
+            "annotation": annotation,
+            "3": None,
+            "analysis": None,
+        }
+        for step in steps:
+            if step in ("3", "analysis"):
+                from commands import analysis
+                analysis.main(["-h"], project_root=PROJECT_ROOT)   # show analysis help for now
+                continue
+            mod = step_modules.get(step)
+            if not mod:
+                parser.error(f"Invalid step: {step}. Use 1/identification, 2/annotation, 3/analysis.")
+            print(f"\n--- Executing step: {step} ---")
+            mod.run(args)
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+# ----------------------------------------------------------------------
+if __name__ == "__main__":
+    main()
