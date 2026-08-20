@@ -46,7 +46,9 @@ def add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("-d", "--index", help="Bowtie index prefix (if provided, skip building)")
 
     # Replicate handling
-    parser.add_argument("-r", "--replicate", help="Replicate grouping: comma-separated counts per group")
+    parser.add_argument("-r", "--replicate",
+                        help="Replicate grouping: comma-separated counts per group "
+                             "(default: all inputs as one group, i.e., -r equals number of input files)")
 
     # Resource
     parser.add_argument("-t", "--threads", type=int, default=DEFAULT_THREADS)
@@ -497,7 +499,7 @@ def run(args):
         sys.exit(f"Genome file not found: {genome}")
 
     # Replicate grouping
-    rep_raw = args.replicate or cfg.get("r/replicate") or cfg.get("replicate") or "1"
+    rep_raw = args.replicate or cfg.get("r/replicate") or cfg.get("replicate") or str(len(input_files))
     rep_counts = [int(x.strip()) for x in rep_raw.split(",")]
     # Build groups
     replicate_groups = []
