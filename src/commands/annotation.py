@@ -30,13 +30,16 @@ DEFAULT_PROGRESS = 1
 def add_arguments(parser: argparse.ArgumentParser):
     """Define all command-line arguments for the annotation step."""
     parser.add_argument("-i", "--input", help="Input folder(s) from identification step, comma separated")
-    parser.add_argument("-f", "--file", help="File containing list of input folders, one per line")   # 新增
+    parser.add_argument("-f", "--file", help="File containing list of input folders, one per line")
     parser.add_argument("-o", "--output", help="Output root directory")
     parser.add_argument("--prefix", help="Output prefix(es) comma separated")
     parser.add_argument("--prefix_miRNA", help="miRNA prefix (e.g., 'N710') [required]")
     parser.add_argument("--species", help="Species name (e.g., 'Arabidopsis thaliana') [required]")
 
     parser.add_argument("-g", "--genome", help="Reference genome FASTA file")
+    parser.add_argument("--pmiren", help="PmiREN core dataset", default="PmiREN-20260810-isoform.fa")
+    parser.add_argument("--pmiren-index", help="PmiREN BLAST database prefix (default: index/isoform-in under data directory)",
+                        default="index/isoform-in")
     parser.add_argument("-d", "--index", help="Bowtie genome index prefix (skip building if provided)")
 
     parser.add_argument("-r", "--replicate", help="Replicate grouping: comma-separated counts per group")
@@ -52,7 +55,9 @@ def add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--clean", action="store_true", help="Remove temporary directories (temp, index) after completion")
 
     parser.add_argument("--bowtie", help="path to bowtie")
+    parser.add_argument("--blastn", help="path to blastn")
     parser.add_argument("--bowtie-build", help="path to bowtie-build")
+    parser.add_argument("--makeblastdb", help="path to makeblastdb")
     parser.add_argument("--RNAfold", help="path to RNAfold")
     parser.add_argument("--samtools", help="path to samtools")
     parser.add_argument("--bedtools", help="path to bedtools")
@@ -67,6 +72,8 @@ def ensure_defaults(args):
         'prefix_miRNA': None,
         'species': None,
         'genome': None,
+        'pmiren': "PmiREN-20260810-isoform.fa",
+        'pmiren_index': "index/isoform-in",
         'index': None,
         'replicate': '1',
         'threads': 1,
@@ -77,14 +84,16 @@ def ensure_defaults(args):
         'common': False,
         'clean': False,
         'bowtie': None,
+        'blastn': None,
         'bowtie_build': None,
+        'makeblastdb': None,
         'RNAfold': None,
         'samtools': None,
         'bedtools': None,
         'seqkit': None,
         'input': None,
         'output': None,
-        'file': None,                   # 新增
+        'file': None,                   
     }
     for attr, val in defaults.items():
         if not hasattr(args, attr):
@@ -189,7 +198,7 @@ def resolve_annotation_prefixes(
 
 
 # ----------------------------------------------------------------------
-# Part 1: steps 4.4 – 4.10, returns path to second-basic-info file
+# Part 1: steps 4.4 – 4.10, returns path to final_basic_info file
 def run_annotation_part1(
     args,
     group_input_folders: List[Path],
@@ -204,6 +213,7 @@ def run_annotation_part1(
     Returns the path to {prefix}-second-basic-info file (in temp/).
     """
     py_exe = sys.executable
+    bin_dir = project_root / "bin"
     src_dir = project_root / "src"
     scripts_dir = project_root / "scripts"
     data_dir = project_root / "data"
@@ -276,41 +286,15 @@ def run_annotation_part1(
                     "-o", str(mature_bed), "-fo", str(mature_fasta)],
                    stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
 
-    # 4.6 Align to PmiREN
-    pmiren_index = data_dir / "index" / "PmiREN-core-AA"
-    aln_file = temp_dir / f"{group_prefix}-all-mod_fp_prediction-nr-mature-PmiREN.aln"
-    bowtie_exe = getattr(args, 'bowtie', None) or "bowtie"
-    subprocess.run(f"{bowtie_exe} -a -v 2 {pmiren_index} -f {mature_fasta} > {aln_file} 2>> {log_file}",
-                   shell=True, check=True)
-
-    # 4.7 Process alignment, scoring, clustering, annotate
-    seqkit_exe = getattr(args, 'seqkit', None) or "seqkit"
-    len_file = temp_dir / f"{group_prefix}-all-mod_fp_prediction-nr-mature.length"
-    subprocess.run(f"{seqkit_exe} fx2tab --length --name --header-line {mature_fasta} | grep -v '#' > {len_file} 2>> {log_file}",
-                   shell=True, check=True)
-
-    pmiren_len_file = data_dir / "PmiREN-core-in-20260429-AA.length"
-    total_len = temp_dir / f"{group_prefix}-all-mod_fp_prediction-nr-mature-total.length"
-    with open(total_len, 'w') as outf:
-        for f in [pmiren_len_file, len_file]:
-            with open(f) as inf:
-                outf.write(inf.read())
-
-    score_file = temp_dir / f"{group_prefix}-all-mod_fp_prediction-nr-mature-PmiREN.score"
-    subprocess.run([py_exe, str(src_dir / "bowtie_mismatch_scoring.py"),
-                    "-i", str(aln_file), "-l", str(total_len), "-o", str(score_file)],
+    #4.6 Align to PmiREN (blastn) 4.7 Process alignment, scoring, clustering, annotate
+    pmiren_fasta = data_dir / args.pmiren
+    pmiren_index = data_dir / args.pmiren_index
+    subprocess.run([py_exe, str(bin_dir / "anno_miRNA.py"),
+                    "-i", str(mature_fasta), "-p", str(pmiren_fasta), "-d", str(pmiren_index), "-o", str(temp_dir),
+                    "-t", str(args.threads), "--type", str("MIRN")],
                    stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
-
-    best_score = temp_dir / f"{group_prefix}-all-mod_fp_prediction-nr-mature-PmiREN.best.score"
-    subprocess.run([py_exe, str(scripts_dir / "filter_best_scores_Q.py"),
-                    "-i", str(score_file), "-o", str(best_score)],
-                   stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
-
-    cluster_file = temp_dir / f"{group_prefix}-all-mod_fp_prediction-nr-mature-PmiREN.best.score.cluster"
-    subprocess.run([py_exe, str(scripts_dir / "merge_by_scores_Q_v2.py"),
-                    "-i", str(best_score), "-o", str(cluster_file), "-f", str(mature_fasta)],
-                   stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
-
+    
+    cluster_file = temp_dir / f"temp" / f"anno.map"
     annotated_nr = temp_dir / f"{group_prefix}-all-mod_fp_prediction-nr-annotated"
     subprocess.run([py_exe, str(src_dir / "predictions_annotate.py"),
                     "-i", str(nr_pred), "-c", str(cluster_file), "-o", str(annotated_nr)],
@@ -343,6 +327,7 @@ def run_annotation_part1(
                     "-struc", str(struct_file), "-chr_length", str(chr_len_file),
                     "-species", args.species,
                     "-prefix_miRNA", args.prefix_miRNA,
+                    "-m", str(cluster_file),
                     "-o", str(primary_info)],
                    stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
 
@@ -350,104 +335,11 @@ def run_annotation_part1(
     subprocess.run([py_exe, str(src_dir / "rearrange_result.py"),
                     "-i", str(primary_info), "-o", str(second_basic_info)],
                    stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
-
-    return second_basic_info  # temp/{prefix}-second-basic-info
-
-# ----------------------------------------------------------------------
-# MIRN rename step (between 4.10 and 4.11)
-def run_mirn_rename(
-    args,
-    second_basic_info: Path,
-    output_group_dir: Path,
-    prefix: str,
-    log_file: Path,
-    project_root: Path
-) -> Path:
-    """
-    Execute MIRN rename pipeline.
-    Uses MIRN_cluster.py, MIRN_rename.py, add_AA.py, etc.
-    Returns path to final basic-info file (output/{prefix}-basic-info).
-    """
-    py_exe = sys.executable
-    src_dir = project_root / "src"
-    scripts_dir = project_root / "scripts"
-    bin_dir = project_root / "bin"
-    temp_dir = output_group_dir / "temp"
-    index_dir = output_group_dir / "index"
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    index_dir.mkdir(parents=True, exist_ok=True)
-
-    # Prepare MIRN sequences
-    mirn_fa = temp_dir / f"{prefix}-second-basic-info-MIRN.fa"
-    subprocess.run(f"cat {second_basic_info} | grep \"MIRN\" | awk '{{ print \">\"$1\"\\n\"$18 }}' > {mirn_fa}",
-                   shell=True, check=True, stderr=open(log_file, 'a'))
-
-    mirn_len = temp_dir / f"{prefix}-second-basic-info-MIRN.length"
-    seqkit_exe = getattr(args, 'seqkit', None) or "seqkit"
-    subprocess.run(f"{seqkit_exe} fx2tab --length --name --header-line {mirn_fa} | grep -v '#' > {mirn_len} 2>> {log_file}",
-                   shell=True, check=True)
-
-    mirn_a_fa = temp_dir / f"{prefix}-second-basic-info-MIRN-A.fa"
-    subprocess.run([py_exe, str(bin_dir / "add_AA.py"),
-                    "-i", str(mirn_fa), "-o", str(mirn_a_fa)],
-                   stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
-
-    # Build bowtie index
-    bowtie_build_exe = getattr(args, 'bowtie_build', None) or "bowtie-build"
-    mirn_index = index_dir / "basic-info-MIRN-A"
-    subprocess.run(f"{bowtie_build_exe} -f {mirn_a_fa} {mirn_index} >> {log_file} 2>&1",
-                   shell=True, check=True)
-
-    # Align original MIRN to AA extended
-    bowtie_exe = getattr(args, 'bowtie', None) or "bowtie"
-    mirn_aln = temp_dir / f"{prefix}-second-basic-info-MIRN.aln"
-    subprocess.run(f"{bowtie_exe} -a -v 2 {mirn_index} -f {mirn_fa} > {mirn_aln} 2>> {log_file}",
-                   shell=True, check=True)
-
-    # Find single-copy MIRN
-    mirn_single = temp_dir / f"{prefix}-second-basic-info-MIRN.single"
-    subprocess.run(f"cat {mirn_aln} | awk '{{sum[$1]+=1}}END{{for(i in sum){{ print i\"\\t\"sum[i] }}}}' | awk '$2==1{{ print $1 }}' > {mirn_single}",
-                   shell=True, check=True, stderr=open(log_file, 'a'))
-
-    # MIRN that align to different sequences (not self)
-    mirn_single_part = temp_dir / f"{prefix}-second-basic-info-MIRN.single.part"
-    subprocess.run(f"cat {mirn_aln} | awk '{{sum[$1]+=1}}END{{for(i in sum){{ print i\"\\t\"sum[i] }}}}' | awk '$2!=1{{ print $1 }}' | awk 'NR==FNR {{a[$1];next}} {{if($1 in a){{ print $0 }}}}' - {mirn_aln} | awk '$1!=$3{{ print $0 }}' | awk 'NR==FNR {{a[$1];next}} {{if($3 in a){{ print $0 }}}}' {mirn_single} - | awk '{{ print $1\"\\t\"$3 }}' > {mirn_single_part}",
-                   shell=True, check=True, stderr=open(log_file, 'a'))
-
-    # MIRN alignments excluding self-alignments (for scoring)
-    mirn_aln_part = temp_dir / f"{prefix}-second-basic-info-MIRN.aln.part"
-    subprocess.run(f"cat {mirn_aln} | awk '{{sum[$1]+=1}}END{{for(i in sum){{ print i\"\\t\"sum[i] }}}}' | awk '$2!=1{{ print $1 }}' | awk 'NR==FNR {{a[$1];next}} {{if($1 in a){{ print $0 }}}}' - {mirn_aln} | awk '$1!=$3{{ print $0 }}' | awk 'NR==FNR {{a[$1];next}} {{if(!($3 in a)){{ print $0 }}}}' {mirn_single} - > {mirn_aln_part}",
-                   shell=True, check=True, stderr=open(log_file, 'a'))
-
-    # Score, filter best, cluster
-    score_file = temp_dir / f"{prefix}-second-basic-info-MIRN.aln.part.score"
-    subprocess.run([py_exe, str(src_dir / "bowtie_mismatch_scoring.py"),
-                    "-i", str(mirn_aln_part), "-l", str(mirn_len), "-o", str(score_file)],
-                   stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
-
-    best_score = temp_dir / f"{prefix}-second-basic-info-MIRN.aln.part.best.score"
-    subprocess.run([py_exe, str(scripts_dir / "filter_best_scores_Q.py"),
-                    "-i", str(score_file), "-o", str(best_score)],
-                   stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
-
-    cluster = temp_dir / f"{prefix}-second-basic-info-MIRN.aln.part.best.score.cl"
-    subprocess.run([py_exe, str(src_dir / "MIRN_cluster.py"),
-                    "-i", str(best_score), "-o", str(cluster)],
-                   stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
-
-    # MIRN rename
-    mirn_map = temp_dir / f"{prefix}-second-basic-info-MIRN.map"
-    subprocess.run([py_exe, str(src_dir / "MIRN_rename.py"),
-                    "-i", str(cluster), "-s", str(mirn_single),
-                    "-p", str(mirn_single_part), "-o", str(mirn_map)],
-                   stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
-
-    # Apply rename to second-basic-info → output/{prefix}-basic-info
-    final_basic_info = output_group_dir / f"{prefix}-basic-info"
-    subprocess.run([py_exe, str(src_dir / "rename-basic-info-MIRN.py"),
-                    "-i", str(second_basic_info), "-m", str(mirn_map),
-                    "-o", str(final_basic_info)],
-                   stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
+    
+    final_basic_info = output_group_dir / f"{group_prefix}-basic-info"
+    subprocess.run(f"cp {second_basic_info} {final_basic_info}",
+                   shell=True, check=True, stdout=subprocess.DEVNULL,
+                   stderr=open(log_file, 'a'))
 
     return final_basic_info
 
@@ -535,6 +427,8 @@ def run(args):
         'prefix': 'prefix',
         'prefix_miRNA': 'prefix_miRNA',
         'species': 'species',
+        'pmiren': 'pmiren',
+        'pmiren-index': 'pmiren_index',
         'bowtie': 'bowtie',
         'bowtie-build': 'bowtie_build',
         'RNAfold': 'RNAfold',
@@ -635,7 +529,7 @@ def run(args):
     print(f"\nProcessing {len(input_folders)} input folder(s) with {args.progress} parallel process(es).")
 
     # ---- Execute part 1 (per group) ----
-    second_basic_info_paths = []
+    final_basic_info_paths = []
     for g_idx, grp in enumerate(replicate_groups):
         out_dir = output_root / folder_prefixes[g_idx]
         group_fprefixes = [file_prefixes[input_folders.index(inp)] for inp in grp]
@@ -643,19 +537,13 @@ def run(args):
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
         print(f"  [start] group {g_idx+1} ({folder_prefixes[g_idx]})")
-        seconds = run_annotation_part1(args, grp, group_fprefixes, out_dir, genome, log_file, project_root)
-        second_basic_info_paths.append(seconds)
+        final_basic_info = run_annotation_part1(args, grp, group_fprefixes, out_dir, genome, log_file, project_root)
+        final_basic_info_paths.append(final_basic_info)
         print(f"  [done]  group {g_idx+1} ({folder_prefixes[g_idx]})")
 
-    # ---- MIRN rename for each group ----
-    basic_info_paths = []
-    for g_idx, (out_dir, seconds) in enumerate(zip([output_root / fp for fp in folder_prefixes], second_basic_info_paths)):
-        prefix = folder_prefixes[g_idx]  # used for output file naming
-        log_file = out_dir / f"{folder_prefixes[g_idx]}_annotation.log"
-        final_basic = run_mirn_rename(args, seconds, out_dir, prefix, log_file, project_root)
-        basic_info_paths.append(final_basic)
+    basic_info_paths = final_basic_info_paths
 
-    # ---- Consistency / common analysis (4.11) ----
+    # ---- Consistency processing (optional) ----
     consistency_ref = args.consistency
     common_flag = args.common
     if consistency_ref or common_flag:
