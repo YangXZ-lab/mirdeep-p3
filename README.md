@@ -193,7 +193,6 @@ mirdeep-p3 annotation \
   --prefix <output prefix> \
   --prefix_miRNA <miRNA prefix> \
   --species <species> \
-  --common \
   -t <threads> \
   -o <output_dir>
 
@@ -202,11 +201,9 @@ mirdeep-p3 annotation \
   -i <output/sample_1,output/sample_2,output/sample_3> \
   -g <genome.fasta> \
   -d <bowtie_index_prefix> \
-  -r <group number> \
   --prefix <output prefix> \
   --prefix_miRNA <miRNA prefix> \
   --species <species> \
-  --common \
   -t <threads> \
   -o <output_dir>
 ```
@@ -217,20 +214,27 @@ mirdeep-p3 annotation \
 | `-g,--genome` | Genome file of fasta file. | `[e.g., genome.fasta]` |
 | `-d,--index` | Path prefix of a pre-built bowtie index (optional). If not specified, the index is built automatically under the output directory; provide a prefix here to reuse an existing index and skip building. | `[e.g., bowtie_index_prefix]` |
 | `-t,--threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 14]` |
-| `-r,--progress` | Number of samples/files processed in parallel (optional, default: 1). For example, if 3 input files are provided, `-p 3` will process all three simultaneously. | `[e.g., 3]` |
+| `--species` | Species name in the output (must be quoted). | `[e.g., "Arabidopsis thaliana"]` |
+| `--prefix_miRNA` | miRNA prefix in the output (must be quoted). | `[e.g., "Ath"]` |
+| `--prefix` | Prefix of output file (optional). | `[e.g., flower]` |
 
 | Path | Description |
 |---|---|
-| `output/mirdp3-identification-<time>.pipe` | Log for this task |
-| `output/sample_1/<sample>_trimming_report.txt` | trim_galore reslut |
-| `output/sample_1/<sample>_identification.log` | Log for each step |
-| `output/sample_1/<sample>.total_reads` | Total reads count |
-| `output/sample_1/<sample>_filter_P_prediction` | Result of indentification step |
+| `output/annotation/mirdp3-annotation-<time>.pipe` | Log for this task |
+| `output/annotation/<prefix>/<prefix>-basic-info` | Result of annotation step |
+| `output/annotation/<prefix>/<prefix>_annotation.log` | Log for each step |
+| `output/annotation/<prefix>/<prefix>-basic-info-cluster` | miRNA cluster result |
+| `output/annotation/<prefix>/<prefix>-mature.count | Raed count matrix |
+| `output/annotation/<prefix>/<prefix>-mature.exp | Expression matrix |
 
 ### Advanced
 - **Custom reference build**: pass your own genome with `-g`; if `-d`
   is omitted, the bowtie index is auto-built under the output/index directory.
 - **Skip steps**: `--no-reads_clean` skip the reads clean step.
+- **Multi group**: `-r/--replicate` used for multigroup; if -r 3,3: the first three inputs form group A, the last three form group B. Each group is processed and reported independently.
+- **prefix**: one prefix per group, comma-separated. The number of prefixes must match the number of groups (2 groups → 2 prefixes).
+- **--common**: when more than one group is present, `--common` unifies the naming of non-conserved miRNA families across groups, ensuring family names are consistent between groups for downstream comparison.
+- **--consistency**: path to a reference basic-info file produced by a previous `mirdeep-p3 annotation` run (same format). When provided, the current annotation is forced to keep miRNA naming consistent with that reference — i.e. the same miRNA will receive the same name in both datasets. This is useful when re-annotating the same species or when merging annotations across groups.
 
 ## Examples
 See:
