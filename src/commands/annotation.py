@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2026 Jiawen Zhao.
+# All rights reserved.
 """
 MirDeep-P3 annotation step orchestrator.
 Handles input (identification output folders), dependency checks,
