@@ -224,8 +224,8 @@ mirdeep-p3 annotation \
 | `output/annotation/<prefix>/<prefix>-basic-info` | Result of annotation step |
 | `output/annotation/<prefix>/<prefix>_annotation.log` | Log for each step |
 | `output/annotation/<prefix>/<prefix>-basic-info-cluster` | miRNA cluster result |
-| `output/annotation/<prefix>/<prefix>-mature.count | Raed count matrix |
-| `output/annotation/<prefix>/<prefix>-mature.exp | Expression matrix |
+| `output/annotation/<prefix>/<prefix>-mature.count` | Raed count matrix |
+| `output/annotation/<prefix>/<prefix>-mature.exp` | Expression matrix |
 
 ### Advanced
 - **Custom reference build**: pass your own genome with `-g`; if `-d`
