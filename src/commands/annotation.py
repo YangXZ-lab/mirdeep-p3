@@ -75,7 +75,7 @@ def ensure_defaults(args):
         'pmiren': "PmiREN-20260810-isoform.fa",
         'pmiren_index': "index/isoform-in",
         'index': None,
-        'replicate': '1',
+        'replicate': None,
         'threads': 1,
         'progress': 1,
         'prefix': None,
@@ -493,7 +493,11 @@ def run(args):
         sys.exit(f"Genome file not found: {genome}")
 
     # Replicate grouping
-    rep_raw = args.replicate or cfg.get("r/replicate") or cfg.get("replicate") or "1"
+    rep_raw = args.replicate
+    if rep_raw is None:
+        rep_raw = cfg.get("r/replicate") or cfg.get("replicate")
+    if not rep_raw:
+        rep_raw = str(len(input_folders))
     rep_counts = [int(x.strip()) for x in rep_raw.split(",")]
     replicate_groups = []
     idx = 0
