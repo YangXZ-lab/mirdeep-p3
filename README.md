@@ -170,11 +170,18 @@ mirdeep-p3 identification \
 | `-d,--index` | Path prefix of a pre-built bowtie index (optional). If not specified, the index is built automatically under the output directory; provide a prefix here to reuse an existing index and skip building. | `[e.g., bowtie_index_prefix]` |
 | `-t,--threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 14]` |
 | `-p,--progress` | Number of samples/files processed in parallel (optional, default: 1). For example, if 3 input files are provided, `-p 3` will process all three simultaneously. | `[e.g., 3]` |
+| Path | Description |
+|---|---|
+| `output/mirdp3-identification-<time>.pipe` | Log for this task |
+| `output/sample_1/<sample>_trimming_report.txt` | trim_galore reslut |
+| `output/sample_1/<sample>_identification.log` | Log for each step |
+| `output/sample_1/<sample>.total_reads` | Total reads count |
+| `output/sample_1/<sample>_nr_predictions` | Result of indentification step |
 
 ### Advanced
-- Resume: `[pipeline framework option]`
-- Custom reference build: `[how]`
-- Skip steps: `[flags]`
+- **Custom reference build**: pass your own genome with `-g`; if `-d`
+  is omitted, the bowtie index is auto-built under the output/index directory.
+- **Skip steps**: `--no-reads_clean` skip the reads clean step.
 
 ## Examples
 See:
