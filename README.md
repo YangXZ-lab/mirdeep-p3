@@ -177,7 +177,7 @@ mirdeep-p3 identification \
 | `output/sample_1/<sample>_trimming_report.txt` | trim_galore reslut |
 | `output/sample_1/<sample>_identification.log` | Log for each step |
 | `output/sample_1/<sample>.total_reads` | Total reads count |
-| `output/sample_1/<sample>_nr_predictions` | Result of indentification step |
+| `output/sample_1/<sample>_filter_P_prediction` | Result of indentification step |
 
 ### Advanced
 - **Custom reference build**: pass your own genome with `-g`; if `-d`
