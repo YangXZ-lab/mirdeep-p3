@@ -142,7 +142,6 @@ Key parameters:
 ```bash
 mirdeep-p3 --help
 ```
-
 ### miRNA identification from sRNA-Seq
 ```bash
 ##1 Single input
@@ -170,6 +169,55 @@ mirdeep-p3 identification \
 | `-d,--index` | Path prefix of a pre-built bowtie index (optional). If not specified, the index is built automatically under the output directory; provide a prefix here to reuse an existing index and skip building. | `[e.g., bowtie_index_prefix]` |
 | `-t,--threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 14]` |
 | `-p,--progress` | Number of samples/files processed in parallel (optional, default: 1). For example, if 3 input files are provided, `-p 3` will process all three simultaneously. | `[e.g., 3]` |
+
+| Path | Description |
+|---|---|
+| `output/mirdp3-identification-<time>.pipe` | Log for this task |
+| `output/sample_1/<sample>_trimming_report.txt` | trim_galore reslut |
+| `output/sample_1/<sample>_identification.log` | Log for each step |
+| `output/sample_1/<sample>.total_reads` | Total reads count |
+| `output/sample_1/<sample>_filter_P_prediction` | Result of indentification step |
+
+### Advanced
+- **Custom reference build**: pass your own genome with `-g`; if `-d`
+  is omitted, the bowtie index is auto-built under the output/index directory.
+- **Skip steps**: `--no-reads_clean` skip the reads clean step.
+
+### miRNA annotation after identification
+```bash
+##1 Single input
+mirdeep-p3 annotation \
+  -i <output/sample_1> \
+  -g <genome.fasta> \
+  -d <bowtie_index_prefix> \
+  --prefix <output prefix> \
+  --prefix_miRNA <miRNA prefix> \
+  --species <species> \
+  --common \
+  -t <threads> \
+  -o <output_dir>
+
+##2 Multiple inputs
+mirdeep-p3 annotation \
+  -i <output/sample_1,output/sample_2,output/sample_3> \
+  -g <genome.fasta> \
+  -d <bowtie_index_prefix> \
+  -r <group number> \
+  --prefix <output prefix> \
+  --prefix_miRNA <miRNA prefix> \
+  --species <species> \
+  --common \
+  -t <threads> \
+  -o <output_dir>
+```
+| Parameter | Description | Example |
+|---|---|---|
+| `-i,--input` | Raw sequencing data (FASTQ/FASTA/compressed files，multiple samples can be separated by commas). | `[e.g., sample_1.fq or sample_1.fq,sample_2.fq,sample_3.fq]` |
+| `-o,--output` | Output dir. | `[e.g., output]` |
+| `-g,--genome` | Genome file of fasta file. | `[e.g., genome.fasta]` |
+| `-d,--index` | Path prefix of a pre-built bowtie index (optional). If not specified, the index is built automatically under the output directory; provide a prefix here to reuse an existing index and skip building. | `[e.g., bowtie_index_prefix]` |
+| `-t,--threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 14]` |
+| `-r,--progress` | Number of samples/files processed in parallel (optional, default: 1). For example, if 3 input files are provided, `-p 3` will process all three simultaneously. | `[e.g., 3]` |
 
 | Path | Description |
 |---|---|
