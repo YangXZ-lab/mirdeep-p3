@@ -322,8 +322,8 @@ mirdeep-p3 analysis TFBS \
 ### miRNA differential expression analysis
 ```bash
 mirdeep-p3 analysis Differential_expression \
-  -c <<prefix>-mature.count> \
-  -r <<prefix>-mature.exp> \
+  -c <mature.count> \
+  -r <mature.exp> \
   --case1 <3,4,5> --case2 <6,7,8> \
   -o <output_dir> \
   --case1name <control> \
