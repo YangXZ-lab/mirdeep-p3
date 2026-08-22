@@ -165,18 +165,18 @@ mirdeep-p3 identification \
 |---|---|---|
 | `-i, --input` | Raw sequencing data (FASTQ/FASTA/compressed files，multiple samples can be separated by commas). | `[e.g., sample_1.fq or sample_1.fq,sample_2.fq,sample_3.fq]` |
 | `-o, --output` | Output dir. | `[e.g., output]` |
-| `-g, --genome` | Genome file of fasta file. | `[e.g., genome.fasta]` |
+| `-g, --genome` | Reference genome FASTA file. | `[e.g., genome.fasta]` |
 | `-d, --index` | Path prefix of a pre-built bowtie index (optional). If not specified, the index is built automatically under the output directory; provide a prefix here to reuse an existing index and skip building. | `[e.g., bowtie_index_prefix]` |
 | `-t, --threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 14]` |
 | `-p, --progress` | Number of samples/files processed in parallel (optional, default: 1). For example, if 3 input files are provided, `-p 3` will process all three simultaneously. | `[e.g., 3]` |
 
 | Path | Description |
 |---|---|
-| `output/mirdp3-identification-<time>.pipe` | Log for this task |
-| `output/sample_1/<sample>_trimming_report.txt` | trim_galore reslut |
-| `output/sample_1/<sample>_identification.log` | Log for each step |
-| `output/sample_1/<sample>.total_reads` | Total reads count |
-| `output/sample_1/<sample>_filter_P_prediction` | Result of indentification step |
+| `output/mirdp3-identification-<time>.pipe` | Log for this task. |
+| `output/sample_1/<sample>_trimming_report.txt` | trim_galore reslut. |
+| `output/sample_1/<sample>_identification.log` | Log for each step. |
+| `output/sample_1/<sample>.total_reads` | Total reads count. |
+| `output/sample_1/<sample>_filter_P_prediction` | Result of indentification step. |
 
 ### Advanced
 - **Custom reference build**: pass your own genome with `-g`; if `-d`
@@ -211,7 +211,7 @@ mirdeep-p3 annotation \
 |---|---|---|
 | `-i, --input` | Output dir of miRNA identification step (multiple samples can be separated by commas). | `[e.g., sample_1 or sample_1,sample_2,sample_3]` |
 | `-o, --output` | Output dir. | `[e.g., output]` |
-| `-g, --genome` | Genome file of fasta file. | `[e.g., genome.fasta]` |
+| `-g, --genome` | Reference genome FASTA file. | `[e.g., genome.fasta]` |
 | `-d, --index` | Path prefix of a pre-built bowtie index (optional). If not specified, the index is built automatically under the output directory; provide a prefix here to reuse an existing index and skip building. | `[e.g., bowtie_index_prefix]` |
 | `-t, --threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 14]` |
 | `--species` | Species name in the output (must be quoted). | `[e.g., "Arabidopsis thaliana"]` |
@@ -220,12 +220,12 @@ mirdeep-p3 annotation \
 
 | Path | Description |
 |---|---|
-| `output/mirdp3-annotation-<time>.pipe` | Log for this task |
-| `output/<prefix>/<prefix>-basic-info` | Result of annotation step |
-| `output/<prefix>/<prefix>_annotation.log` | Log for each step |
-| `output/<prefix>/<prefix>-basic-info-cluster` | miRNA cluster result |
-| `output/<prefix>/<prefix>-mature.count` | Raed count matrix |
-| `output/<prefix>/<prefix>-mature.exp` | Expression matrix |
+| `output/mirdp3-annotation-<time>.pipe` | Log for this task. |
+| `output/<prefix>/<prefix>-basic-info` | Result of annotation step. |
+| `output/<prefix>/<prefix>_annotation.log` | Log for each step. |
+| `output/<prefix>/<prefix>-basic-info-cluster` | miRNA cluster result. |
+| `output/<prefix>/<prefix>-mature.count` | Raed count matrix. |
+| `output/<prefix>/<prefix>-mature.exp` | Expression matrix. |
 
 ### Advanced
 - **Custom reference build**: pass your own genome with `-g`; if `-d`
@@ -251,13 +251,13 @@ mirdeep-p3 analysis Stat \
 
 | Path | Description |
 |---|---|
-| `output/base_dist.svg` | Base composition distribution |
-| `output/first_base_dist.svg` | First base composition distribution |
-| `output/length_dist.svg` | miRNA length distribution |
-| `output/miRNA_family.svg` | miRNA family distribution |
-| `output/Ath-MIR156a_ss.svg` | Stem-loop structure of Ath-MIR156a |
+| `output/base_dist.svg` | Base composition distribution. |
+| `output/first_base_dist.svg` | First base composition distribution. |
+| `output/length_dist.svg` | miRNA length distribution. |
+| `output/miRNA_family.svg` | miRNA family distribution. |
+| `output/Ath-MIR156a_ss.svg` | Stem-loop structure of Ath-MIR156a. |
 > **Note**: All figures except miRNA Stem-loop structure are also exported in **PDF and PNG** formats
-> (e.g. `base_dist.pdf`, `base_dist.png`) — use whichever suits your
+> (e.g. `base_dist.pdf`, `base_dist.png`) — use whichever suits your.
 
 ### miRNA target identification
 ```bash
@@ -278,11 +278,47 @@ mirdeep-p3 analysis Target_finder \
 
 | Path | Description |
 |---|---|
-| `output/target_finder.tsv` | miRNA target identification results |
+| `output/target_finder.tsv` | miRNA target identification results. |
 > **Notes**:
 > 1. The scoring scheme follows **psRNATarget** (https://www.zhaolab.org/psRNATarget/), implemented on top of the scripts from [jtremblay/mirnatarget](https://github.com/jtremblay/mirnatarget).
 > 2. Prediction stringency can be tuned with `-e/--evalue` (E-value threshold) and `--GUs` (allowed G:U mismatches).
 > 3. When a basic-info file from a previous `annotation` run is available, `-b/--basic` is preferred over `-i/--input`, since it carries family and strand information that improves target prediction.
+
+### miRNA promoter analysis
+```bash
+mirdeep-p3 analysis TFBS \
+  -i <basic-info> \
+  --fai <genome.fasta.fai> \
+  -g <genome.fasta> \
+  -o <output_dir> \
+  -p
+```
+| Parameter | Description | Example |
+|---|---|---|
+| `-i, --input` | Result of annotation step. | `[e.g., sample-basic-info]` |
+| `-o, --output` | Output dir. | `[e.g., output]` |
+| `--fai` | fai index of reference genome. | `[e.g., genome.fasta.fai]` |
+| `-g, --genome` | Reference genome FASTA file. | `[e.g., genome.fasta]` |
+| `-p, --picture` | Generate TFBS report picture. | `[e.g., -p]` |
+| `-s, --species` | Species name, quoted (optional, default: Arabidopsis_thaliana). | `[e.g., "Arabidopsis_lyrata"]` |
+| `--list` | List available species. | `[e.g., --list]` |
+| `-b, --bed` | Bed format input (conflict with `-i`). | `[e.g., sample-basic-info.bed]` |
+| `-u, --upstream` | Upstream length to extract (default: 2000). | `[e.g., 3000]` |
+| `-e, --evalue` | E-value threshold for FIMO (default: 1e-6). | `[e.g., 1e-6]` |
+
+| Path | Description |
+|---|---|
+| `output/TFBS_count.svg` | TFBS count per miRNA. |
+| `output/TFBS_distribution.svg` | TFBS distribution per miRNA. |
+| `output/tfbs.tsv` | Result of miRNA promoter analysis. |
+| `output/TF_family_count.svg` | TFBS Count per TF Family. |
+| `output/TF_miRNA_network.svg` | TF–miRNA regulatory network. |
+| `output/tfbs.log` | Log for each step. |
+> **Note**:
+> 1. All figures are also exported in **PDF and PNG** formats
+>    (e.g. `TFBS_count.pdf`, `TFBS_count.png`) — use whichever suits your needs.
+> 2. TFBS prediction follows the workflow of **PlantTFDB** (https://planttfdb.gao-lab.org/); all available species data are also sourced from PlantTFDB.
+
 
 
 ## Examples
