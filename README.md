@@ -209,7 +209,7 @@ mirdeep-p3 annotation \
 ```
 | Parameter | Description | Example |
 |---|---|---|
-| `-i,--input` | Raw sequencing data (FASTQ/FASTA/compressed files，multiple samples can be separated by commas). | `[e.g., sample_1.fq or sample_1.fq,sample_2.fq,sample_3.fq]` |
+| `-i,--input` | Output dir of miRNA identification step (multiple samples can be separated by commas). | `[e.g., sample_1 or sample_1,sample_2,sample_3]` |
 | `-o,--output` | Output dir. | `[e.g., output]` |
 | `-g,--genome` | Genome file of fasta file. | `[e.g., genome.fasta]` |
 | `-d,--index` | Path prefix of a pre-built bowtie index (optional). If not specified, the index is built automatically under the output directory; provide a prefix here to reuse an existing index and skip building. | `[e.g., bowtie_index_prefix]` |
@@ -220,12 +220,12 @@ mirdeep-p3 annotation \
 
 | Path | Description |
 |---|---|
-| `output/annotation/mirdp3-annotation-<time>.pipe` | Log for this task |
-| `output/annotation/<prefix>/<prefix>-basic-info` | Result of annotation step |
-| `output/annotation/<prefix>/<prefix>_annotation.log` | Log for each step |
-| `output/annotation/<prefix>/<prefix>-basic-info-cluster` | miRNA cluster result |
-| `output/annotation/<prefix>/<prefix>-mature.count` | Raed count matrix |
-| `output/annotation/<prefix>/<prefix>-mature.exp` | Expression matrix |
+| `output/mirdp3-annotation-<time>.pipe` | Log for this task |
+| `output/<prefix>/<prefix>-basic-info` | Result of annotation step |
+| `output/<prefix>/<prefix>_annotation.log` | Log for each step |
+| `output/<prefix>/<prefix>-basic-info-cluster` | miRNA cluster result |
+| `output/<prefix>/<prefix>-mature.count` | Raed count matrix |
+| `output/<prefix>/<prefix>-mature.exp` | Expression matrix |
 
 ### Advanced
 - **Custom reference build**: pass your own genome with `-g`; if `-d`
@@ -235,6 +235,29 @@ mirdeep-p3 annotation \
 - **prefix**: one prefix per group, comma-separated. The number of prefixes must match the number of groups (2 groups → 2 prefixes).
 - **--common**: when more than one group is present, `--common` unifies the naming of non-conserved miRNA families across groups, ensuring family names are consistent between groups for downstream comparison.
 - **--consistency**: path to a reference basic-info file produced by a previous `mirdeep-p3 annotation` run (same format). When provided, the current annotation is forced to keep miRNA naming consistent with that reference — i.e. the same miRNA will receive the same name in both datasets. This is useful when re-annotating the same species or when merging annotations across groups.
+
+### miRNA annotation result statistics
+```bash
+mirdeep-p3 analysis Stat \
+  -i <basic-info> \
+  -o <output_dir> \
+  --rnaplot
+```
+| Parameter | Description | Example |
+|---|---|---|
+| `-i,--input` | Result of annotation step (basic info file). | `[e.g., sample-basic-info]` |
+| `-o,--output` | Output dir. | `[e.g., output]` |
+| `--rnaplot` | Plotting miRNA Stem-loop structure (optional). | `[e.g., --rnaplot]` |
+
+| Path | Description |
+|---|---|
+| `output/base_dist.svg` | Base composition distribution |
+| `output/first_base_dist.svg` | First base composition distribution |
+| `output/length_dist.svg` | miRNA length distribution |
+| `output/miRNA_family.svg` | miRNA family distribution |
+| `output/Ath-MIR156a_ss.svg` | Stem-loop structure of Ath-MIR156a |
+> **Note**: All figures except miRNA Stem-loop structure are also exported in **PDF and PNG** formats
+> (e.g. `base_dist.pdf`, `base_dist.png`) — use whichever suits your
 
 ## Examples
 See:
