@@ -346,14 +346,16 @@ mirdeep-p3 analysis Differential_expression \
 
 | Path | Description |
 |---|---|
-| `output/TFBS_count.svg` | TFBS count per miRNA. |
-| `output/TFBS_distribution.svg` | TFBS distribution per miRNA. |
-| `output/tfbs.tsv` | Result of miRNA promoter analysis. |
-| `output/TF_family_count.svg` | TFBS Count per TF Family. |
-| `output/TF_miRNA_network.svg` | TF–miRNA regulatory network. |
-| `output/tfbs.log` | Log for each step. |
+| `output/final_miRNA_expression.txt` | miRNA differential expression analysis results. |
+| `output/heatmap.svg` | miRNA expression heatmap in all select samples. |
+| `output/PCA_scatter.svg` | PCA results. |
+| `output/sample_correlation_heatmap.svg` | Sample correlation heatmap. |
+| `output/volcano_flower_root.svg` | Volcano plot of differential expressed miRNA. |
+| `output/miRNA_Sta-MIR160a_expression.svg` | The expression patterns of a differentially expressed miRNA in different groups. |
 > **Note**:
-> `--case1` and `--case2` must have the same number of columns (replicates). `--case1` and `--case2` cannot have any intersection.
+> 1. All figures are also exported in **PDF and PNG** formats
+>    (e.g. `PCA_scatter.pdf`, `PCA_scatter.png`) — use whichever suits your needs.
+> 2. `--case1` and `--case2` must have the same number of columns (replicates). `--case1` and `--case2` cannot have any intersection.
 
 ## Examples
 See:
