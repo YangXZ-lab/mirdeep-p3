@@ -163,12 +163,12 @@ mirdeep-p3 identification \
 ```
 | Parameter | Description | Example |
 |---|---|---|
-| `-i,--input` | Raw sequencing data (FASTQ/FASTA/compressed files，multiple samples can be separated by commas). | `[e.g., sample_1.fq or sample_1.fq,sample_2.fq,sample_3.fq]` |
-| `-o,--output` | Output dir. | `[e.g., output]` |
-| `-g,--genome` | Genome file of fasta file. | `[e.g., genome.fasta]` |
-| `-d,--index` | Path prefix of a pre-built bowtie index (optional). If not specified, the index is built automatically under the output directory; provide a prefix here to reuse an existing index and skip building. | `[e.g., bowtie_index_prefix]` |
-| `-t,--threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 14]` |
-| `-p,--progress` | Number of samples/files processed in parallel (optional, default: 1). For example, if 3 input files are provided, `-p 3` will process all three simultaneously. | `[e.g., 3]` |
+| `-i, --input` | Raw sequencing data (FASTQ/FASTA/compressed files，multiple samples can be separated by commas). | `[e.g., sample_1.fq or sample_1.fq,sample_2.fq,sample_3.fq]` |
+| `-o, --output` | Output dir. | `[e.g., output]` |
+| `-g, --genome` | Genome file of fasta file. | `[e.g., genome.fasta]` |
+| `-d, --index` | Path prefix of a pre-built bowtie index (optional). If not specified, the index is built automatically under the output directory; provide a prefix here to reuse an existing index and skip building. | `[e.g., bowtie_index_prefix]` |
+| `-t, --threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 14]` |
+| `-p, --progress` | Number of samples/files processed in parallel (optional, default: 1). For example, if 3 input files are provided, `-p 3` will process all three simultaneously. | `[e.g., 3]` |
 
 | Path | Description |
 |---|---|
@@ -209,11 +209,11 @@ mirdeep-p3 annotation \
 ```
 | Parameter | Description | Example |
 |---|---|---|
-| `-i,--input` | Output dir of miRNA identification step (multiple samples can be separated by commas). | `[e.g., sample_1 or sample_1,sample_2,sample_3]` |
-| `-o,--output` | Output dir. | `[e.g., output]` |
-| `-g,--genome` | Genome file of fasta file. | `[e.g., genome.fasta]` |
-| `-d,--index` | Path prefix of a pre-built bowtie index (optional). If not specified, the index is built automatically under the output directory; provide a prefix here to reuse an existing index and skip building. | `[e.g., bowtie_index_prefix]` |
-| `-t,--threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 14]` |
+| `-i, --input` | Output dir of miRNA identification step (multiple samples can be separated by commas). | `[e.g., sample_1 or sample_1,sample_2,sample_3]` |
+| `-o, --output` | Output dir. | `[e.g., output]` |
+| `-g, --genome` | Genome file of fasta file. | `[e.g., genome.fasta]` |
+| `-d, --index` | Path prefix of a pre-built bowtie index (optional). If not specified, the index is built automatically under the output directory; provide a prefix here to reuse an existing index and skip building. | `[e.g., bowtie_index_prefix]` |
+| `-t, --threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 14]` |
 | `--species` | Species name in the output (must be quoted). | `[e.g., "Arabidopsis thaliana"]` |
 | `--prefix_miRNA` | miRNA prefix in the output (must be quoted). | `[e.g., "Ath"]` |
 | `--prefix` | Prefix of output file (optional). | `[e.g., flower]` |
@@ -245,8 +245,8 @@ mirdeep-p3 analysis Stat \
 ```
 | Parameter | Description | Example |
 |---|---|---|
-| `-i,--input` | Result of annotation step (basic info file). | `[e.g., sample-basic-info]` |
-| `-o,--output` | Output dir. | `[e.g., output]` |
+| `-i, --input` | Result of annotation step (basic info file). | `[e.g., sample-basic-info]` |
+| `-o, --output` | Output dir. | `[e.g., output]` |
 | `--rnaplot` | Plotting miRNA Stem-loop structure (optional). | `[e.g., --rnaplot]` |
 
 | Path | Description |
@@ -258,6 +258,32 @@ mirdeep-p3 analysis Stat \
 | `output/Ath-MIR156a_ss.svg` | Stem-loop structure of Ath-MIR156a |
 > **Note**: All figures except miRNA Stem-loop structure are also exported in **PDF and PNG** formats
 > (e.g. `base_dist.pdf`, `base_dist.png`) — use whichever suits your
+
+### miRNA target identification
+```bash
+mirdeep-p3 analysis Target_finder \
+  -i <mature_miRNA.fasta> \
+  -c <cds.fasta> \
+  -o <output_dir> \
+  -t <threads>
+```
+| Parameter | Description | Example |
+|---|---|---|
+| `-i, --input` | miRNA mature sequences (fasta). | `[e.g., sample-mature.fasta]` |
+| `-o, --output` | Output dir. | `[e.g., output]` |
+| `-t, --threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 20]` |
+| `-b, --basic` | Result of annotation step (basic info file, conflict with `-i`). | `[e.g., sample-basic-info]` |
+| `-e, --evalue` | E-value threshold for target prediction (optional, default: 2.5). | `[e.g., 30]` |
+| `--GUs` | Allowed G:U mismatches in the complementary region (optional, default: 1). | `[e.g., 0.5]` |
+
+| Path | Description |
+|---|---|
+| `output/target_finder.tsv` | miRNA target identification results |
+> **Notes**:
+> 1. The scoring scheme follows **psRNATarget** (https://www.zhaolab.org/psRNATarget/), implemented on top of the scripts from [jtremblay/mirnatarget](https://github.com/jtremblay/mirnatarget).
+> 2. Prediction stringency can be tuned with `-e/--evalue` (E-value threshold) and `--GUs` (allowed G:U mismatches).
+> 3. When a basic-info file from a previous `annotation` run is available, `-b/--basic` is preferred over `-i/--input`, since it carries family and strand information that improves target prediction.
+
 
 ## Examples
 See:
