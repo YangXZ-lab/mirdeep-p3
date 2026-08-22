@@ -224,7 +224,7 @@ mirdeep-p3 annotation \
 | `output/<prefix>/<prefix>-basic-info` | Result of annotation step. |
 | `output/<prefix>/<prefix>_annotation.log` | Log for each step. |
 | `output/<prefix>/<prefix>-basic-info-cluster` | miRNA cluster result. |
-| `output/<prefix>/<prefix>-mature.count` | Raed count matrix. |
+| `output/<prefix>/<prefix>-mature.count` | Read count matrix. |
 | `output/<prefix>/<prefix>-mature.exp` | Expression matrix. |
 
 ### Advanced
@@ -319,7 +319,41 @@ mirdeep-p3 analysis TFBS \
 >    (e.g. `TFBS_count.pdf`, `TFBS_count.png`) — use whichever suits your needs.
 > 2. TFBS prediction follows the workflow of **PlantTFDB** (https://planttfdb.gao-lab.org/); all available species data are also sourced from PlantTFDB.
 
+### miRNA differential expression analysis
+```bash
+mirdeep-p3 analysis Differential_expression \
+  -c <<prefix>-mature.count> \
+  -r <<prefix>-mature.exp> \
+  --case1 <3,4,5> --case2 <6,7,8> \
+  -o <output_dir> \
+  --case1name <control> \
+  --case2name <treatment> \
+  --DEOnly
+```
+| Parameter | Description | Example |
+|---|---|---|
+| `-c, --count` | Read count matrix. | `[e.g., sample-mature.count]` |
+| `-r, --rpm` | Expression matrix. | `[e.g., sample-mature.exp]` |
+| `--case1` | Columns corresponding to samples in the control group (separated by commas). | `[e.g., 3,4,5]` |
+| `--case2` | RColumns corresponding to samples in the treatment group (separated by commas). | `[e.g., 6,7,8]` |
+| `-o, --output` | Output dir. | `[e.g., output]` |
+| `--case1name` | Name of control group (optional, default: case1, must be quoted). | `[e.g., "flower"]` |
+| `--case2name` | Name of treeatment group (optional, default: case2, must be quoted). | `[e.g., "root"]` |
+| `--DEOnly` | Display only the expression patterns of differentially expressed miRNAs (optional). | `[e.g., --DEOnly]` |
+| `--miRNA` | Comma-separated list of miRNA names to display (optional). | `[e.g., Ath-miR156a,Ath-miR157a]` |
+| `-f, --file` | File containing miRNA names, one per line, equivalent to `--miRNA` (optional, conflict with `--miRNA`). | `[e.g., miRNA_list.txt]` |
+| `--min-expr` | Minimum expression in at least one sample to retain miRNA (default: 5.0). | `[e.g., 10]` |
 
+| Path | Description |
+|---|---|
+| `output/TFBS_count.svg` | TFBS count per miRNA. |
+| `output/TFBS_distribution.svg` | TFBS distribution per miRNA. |
+| `output/tfbs.tsv` | Result of miRNA promoter analysis. |
+| `output/TF_family_count.svg` | TFBS Count per TF Family. |
+| `output/TF_miRNA_network.svg` | TF–miRNA regulatory network. |
+| `output/tfbs.log` | Log for each step. |
+> **Note**:
+> `--case1` and `--case2` must have the same number of columns (replicates). `--case1` and `--case2` cannot have any intersection.
 
 ## Examples
 See:
