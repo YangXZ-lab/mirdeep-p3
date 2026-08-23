@@ -1,4 +1,4 @@
-# [mirdeep-p3]
+# miRDeep-P3
 [一句话说明：这是做什么的。例：A reproducible pipeline for miRNA discovery and quantification from small RNA-seq.]
 
 ## Highlights
