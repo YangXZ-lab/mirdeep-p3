@@ -36,7 +36,7 @@ def add_arguments(parser: argparse.ArgumentParser):
 
 def run(args):
     project_root = getattr(args, 'project_root', None) or Path(__file__).resolve().parents[2]
-    main_script = project_root / "mirdeep-p3.py"
+    main_script = project_root / "mirdeep-p3"
     python = sys.executable
 
     # ---- Validate case columns ----
