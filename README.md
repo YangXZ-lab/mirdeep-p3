@@ -2,10 +2,22 @@
 [一句话说明：这是做什么的。例：A reproducible pipeline for miRNA discovery and quantification from small RNA-seq.]
 
 ## Highlights
-- ✅ Feature 1 (e.g., end-to-end pipeline from FASTQ to results)
-- ✅ Feature 2 (e.g., supports hg38/mm10 and custom references)
-- ✅ Feature 3 (e.g., Docker/Conda ready, fully reproducible)
-- ✅ Feature 4 (e.g., produces publication-ready plots/tables)
+
+- **End-to-end miRNA discovery** — from raw sRNA-seq FASTQ to annotated
+  mature/precursor miRNAs in a single workflow (identification →
+  annotation → downstream analysis).
+
+- **Multi-group comparison** — parallel processing of replicates
+  (`-r`/`-p`) with consistent miRNA family naming across groups and runs
+  (`--common`/`--consistency`).
+
+- **Rich downstream analysis** — target prediction (psRNATarget-based),
+  TFBS/promoter analysis (PlantTFDB), expression, enrichment and network
+  modules, all in one tool.
+
+- **Reproducible & publication-ready** — Conda packaged, multithreaded,
+  and every figure exported in SVG/PDF/PNG formats.
+
 
 ## Table of Contents
 - [Introduction](#introduction)
