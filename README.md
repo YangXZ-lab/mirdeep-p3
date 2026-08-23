@@ -397,6 +397,7 @@ mirdeep-p3.py analysis Functional_analysis \
 > 1. All figures are also exported in **PDF and PNG** formats
 >    (e.g. `GO_bar.pdf`, `GO_bar.png`) — use whichever suits your needs.
 > 2. The `--chord` parameter must be used together with the `--target` parameter.
+> 3. Please make sure the output folder is empty before running to avoid OrgDB build errors.
 ## Examples
 See:
 - `examples/` for minimal runnable examples
