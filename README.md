@@ -418,16 +418,16 @@ mirdeep-p3.py analysis Functional_analysis \
 
 | Path | Description |
 |---|---|
-| `output/final_miRNA_expression.txt` | miRNA differential expression analysis results. |
-| `output/heatmap.svg` | miRNA expression heatmap in all select samples. |
-| `output/PCA_scatter.svg` | PCA results. |
-| `output/sample_correlation_heatmap.svg` | Sample correlation heatmap. |
-| `output/volcano_flower_root.svg` | Volcano plot of differential expressed miRNA. |
-| `output/miRNA_Sta-MIR160a_expression.svg` | The expression patterns of a differentially expressed miRNA in different groups. |
+| `output/Go.eggnog.emapper.annotations` | Emapper results used for functional analysis. |
+| `output/org.Morg.eg.db/` | OrgDb directory. |
+| `output/ego_list` | miRNA functional analysis results. |
+| `output/GO_bar.svg` | GO bar plot. |
+| `output/go.svg` | GO dot plot. |
+| `output/kegg.svg` | KEGG dot plot. |
 > **Note**:
 > 1. All figures are also exported in **PDF and PNG** formats
->    (e.g. `PCA_scatter.pdf`, `PCA_scatter.png`) — use whichever suits your needs.
-> 2. `--case1` and `--case2` must have the same number of columns (replicates). `--case1` and `--case2` cannot have any intersection.
+>    (e.g. `GO_bar.pdf`, `GO_bar.png`) — use whichever suits your needs.
+> 2. The `--chord` parameter must be used together with the `--target` parameter.
 ## Examples
 See:
 - `examples/` for minimal runnable examples
