@@ -73,6 +73,10 @@ def run(args):
         output_dir = Path(args.output)
     else:
         output_dir = Path(f"mirdeep-functional_analysis-{datetime.now().strftime('%m%d%y-%H%M')}")
+
+    # Clear existing output directory to avoid stale files
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # ---- 3. Build orgdb if requested ----
