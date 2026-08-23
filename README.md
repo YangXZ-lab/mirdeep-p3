@@ -41,12 +41,23 @@
 ---
 
 ## Introduction
-**[Project Name]** is a [tool/pipeline/package] for **[biological goal]** using **[method/algorithm]**.
+
+**mirdeep-p3** is an end-to-end pipeline for **plant miRNA discovery and
+functional annotation** using **small RNA-seq data and comparative
+genomics approaches**. It extends the classic miRDeep framework with
+multi-sample comparison, family-level naming consistency, and a complete
+suite of downstream analyses.
 
 Typical use cases:
-- [Use case 1]
-- [Use case 2]
-- [Use case 3]
+- Identify **novel and conserved miRNAs** from raw sRNA-seq data of any
+  plant species, with stem-loop structure validation and mature/star
+  annotation
+- Perform **downstream analysis** in one place: target
+  prediction (psRNATarget-based), promoter/TFBS analysis (PlantTFDB),
+  differential expression, GO/KEGG enrichment and regulatory networks
+- Generate **publication-ready figures** (SVG/PDF/PNG) and tables for
+  manuscripts without extra scripting
+
 
 If you use this software in academic work, please see [Citation](#citation).
 
