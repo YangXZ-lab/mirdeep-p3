@@ -106,60 +106,6 @@ docker build -t [image-name] .
 docker run --rm -it [image-name] --help
 ```
 
-## Quick Start
-### 1) Prepare input
-```bash
-mkdir -p data results
-# put your FASTQ/FASTA/metadata into data/
-```
-
-### 2) Run
-```bash
-[main_command] \
-  --input data/[input] \
-  --outdir results \
-  --threads 8
-```
-
-### 3) Check outputs
-```bash
-ls -lah results
-```
-
-## Input & Output
-### Input
-| Name | Type | Description |
-|---|---|---|
-| `--input` | file/dir | [e.g., FASTQ directory] |
-| `--reference` | file | [e.g., genome fasta] |
-| `--metadata` | table | [e.g., sample sheet CSV/TSV] |
-
-**Example sample sheet (`samples.tsv`)**
-```tsv
-sample_id	condition	fastq_1	fastq_2
-S1	CTRL	data/S1_R1.fastq.gz	data/S1_R2.fastq.gz
-S2	TREAT	data/S2_R1.fastq.gz	data/S2_R2.fastq.gz
-```
-
-### Output
-| Path | Description |
-|---|---|
-| `results/summary.tsv` | Main summary table |
-| `results/logs/` | Logs for each step |
-| `results/qc/` | QC reports (FastQC/MultiQC) |
-| `results/plots/` | Publication-ready figures |
-| `results/version_info.txt` | Tool + reference versions |
-
-## Configuration
-- Default config: `config/default.yaml`
-- Example config: `config/example.yaml`
-
-Key parameters:
-- `threads`: number of threads
-- `genome_build`: hg38/mm10/custom
-- `adapter_sequence`: [small RNA adapter]
-- `min_length`: [e.g., 18]
-
 ## Usage
 ### Show help
 ```bash
