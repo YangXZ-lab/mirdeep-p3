@@ -56,7 +56,7 @@ def check_external_tools(required: Dict[str, Optional[str]]) -> Tuple[bool, List
             try:
                 cmd = [command] + ([test_arg] if test_arg else [])
                 proc = subprocess.run(cmd, stdout=subprocess.DEVNULL,
-                                      stderr=subprocess.DEVNULL, timeout=5)
+                                      stderr=subprocess.DEVNULL, timeout=20)
                 if proc.returncode == 0:
                     success = True
                     break
