@@ -15,7 +15,7 @@
   TFBS/promoter analysis (PlantTFDB), expression, enrichment and network
   modules, all in one tool.
 
-- **Reproducible & publication-ready** — Conda packaged, multithreaded,
+- **Reproducible & publication-ready** — Docker/Conda packaged, multithreaded,
   and every figure exported in SVG/PDF/PNG formats.
 
 
