@@ -293,7 +293,8 @@ mirdeep-p3 analysis TFBS \
 mirdeep-p3 analysis Differential_expression \
   -c <mature.count> \
   -r <mature.exp> \
-  --case1 <3,4,5> --case2 <6,7,8> \
+  --case1 <Columns corresponding to control group> \
+  --case2 <Columns corresponding to treatment group> \
   -o <output_dir> \
   --case1name <control> \
   --case2name <treatment> \
@@ -304,7 +305,7 @@ mirdeep-p3 analysis Differential_expression \
 | `-c, --count` | Read count matrix. | `[e.g., sample-mature.count]` |
 | `-r, --rpm` | Expression matrix. | `[e.g., sample-mature.exp]` |
 | `--case1` | Columns corresponding to samples in the control group (separated by commas). | `[e.g., 3,4,5]` |
-| `--case2` | RColumns corresponding to samples in the treatment group (separated by commas). | `[e.g., 6,7,8]` |
+| `--case2` | Columns corresponding to samples in the treatment group (separated by commas). | `[e.g., 6,7,8]` |
 | `-o, --output` | Output dir. | `[e.g., output]` |
 | `--case1name` | Name of control group (optional, default: case1, must be quoted). | `[e.g., "flower"]` |
 | `--case2name` | Name of treeatment group (optional, default: case2, must be quoted). | `[e.g., "root"]` |
@@ -398,6 +399,32 @@ mirdeep-p3.py analysis Functional_analysis \
 >    (e.g. `GO_bar.pdf`, `GO_bar.png`) — use whichever suits your needs.
 > 2. The `--chord` parameter must be used together with the `--target` parameter.
 > 3. Please make sure the output folder is empty before running to avoid OrgDB build errors.
+
+### One step analysis
+```bash
+mirdeep-p3 analysis Onestep \
+  -b <basic-info> \
+  -c <mature.count> \
+  -r <mature.exp> \
+  --fai <genome.fasta.fai> \
+  -g <genome.fasta> \
+  -t <cds.fasta> \
+  -p <protein.fasta> \
+  -o <output_dir> \
+  --case1 <Columns corresponding to control group> \
+  --case2 <Columns corresponding to treatment group> \
+  --case1name <control> \
+  --case2name <treatment> \
+  --threads <threads> \
+  --rnaplot \
+  --tfbsplot \
+  --DEOnly \
+  --chord
+```
+> **Note**:
+> 1. All figures are also exported in **PDF and PNG** formats
+>    (e.g. `GO_bar.pdf`, `GO_bar.png`) — use whichever suits your needs.
+> 2. All available parameters are the same as those used in the preceding steps.
 ## Examples
 See:
 - `examples/` for minimal runnable examples
