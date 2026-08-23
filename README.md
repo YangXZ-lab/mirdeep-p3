@@ -403,7 +403,31 @@ mirdeep-p3.py analysis Functional_analysis \
   --gene <target_gene_list> \
   -o <output_dir>
 ```
+| Parameter | Description | Example |
+|---|---|---|
+| `-p, --protein` | Protein sequence FASTA file. | `[e.g., sample-protein.fasta]` |
+| `-g, --gene` | Target gene list (a gene per line). | `[e.g., target_gene.list]` |
+| `-t, --threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 20]` |
+| `-o, --output` | Output dir. | `[e.g., output]` |
+| `--orgdb` | Path to OrgDb directory (org.Morg.eg.db) if already built. | `OrgDB_output_dir/org.Morg.eg.db` |
+| `-f, --file` | Path to directory containing pathway2gene and pathway2name files. | `[e.g., OrgDB_output_dir]` |
+| `--EGGNOG_DATA_DIR` | Path to eggNOG data directory (optional, default: data/eggnog_data_dir). | `[e.g., /PATH/eggnog_data_dir/]` |
+| `--kojson` | Path to ko00001.json (otional, default: data/ko00001.json) | `[e.g., ko00001.json]` |
+| `--target` | miRNA-target file (at least two columns: miRNA, target, conflict with `-g, --gene`). | `[e.g., output/target_finder.tsv]` |
+| `--chord` | Generate chord diagram (optional, only with --target). | `[e.g., --chord]` |
 
+| Path | Description |
+|---|---|
+| `output/final_miRNA_expression.txt` | miRNA differential expression analysis results. |
+| `output/heatmap.svg` | miRNA expression heatmap in all select samples. |
+| `output/PCA_scatter.svg` | PCA results. |
+| `output/sample_correlation_heatmap.svg` | Sample correlation heatmap. |
+| `output/volcano_flower_root.svg` | Volcano plot of differential expressed miRNA. |
+| `output/miRNA_Sta-MIR160a_expression.svg` | The expression patterns of a differentially expressed miRNA in different groups. |
+> **Note**:
+> 1. All figures are also exported in **PDF and PNG** formats
+>    (e.g. `PCA_scatter.pdf`, `PCA_scatter.png`) — use whichever suits your needs.
+> 2. `--case1` and `--case2` must have the same number of columns (replicates). `--case1` and `--case2` cannot have any intersection.
 ## Examples
 See:
 - `examples/` for minimal runnable examples
