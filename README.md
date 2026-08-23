@@ -373,6 +373,35 @@ tar xzvf mmseqs.tar.gz
 tar xzvf pfam.tar.gz
 ##2 set EGGNOG_DATA_DIR
 conda env config vars set EGGNOG_DATA_DIR=/PATH_to_mirdeep-p3/data/eggnog_data_dir
+##3.1 run miRNA functional analysis using protein file
+mirdeep-p3 analysis Functional_analysis \
+  -p <protein.fasta> \
+  -g <target_gene_list> \
+  -t <threads> \
+  -o <output_dir>
+##3.2 run miRNA functional analysis using exsit orgdb
+###3.2.1 run emapper
+emapper.py --cpu 20 \
+  -m diamond \
+  --override \
+  --dbmem \
+  -d euk \
+  --tax_scope Viridiplantae \
+  -i <protein.fasta> \
+  -o <output_dir>
+sed '/^##/d' output_dir/*.emapper.annotations | sed 's/#//g'| awk -vFS="\t" -vOFS="\t" '{print $1,$9,$10,$12}' > output_dir/GO.emapper.annotations
+###3.2.2 build orgdb with emapper annotations
+Rscript bin/build_orgdb.R \
+  -i output_dir/GO.emapper.annotations \
+  --kojson data/ko00001.json \
+  -o <OrgDB_output_dir>
+###3.2.3 run miRNA functional analysis
+mirdeep-p3.py analysis Functional_analysis \
+  --orgdb <OrgDB_output_dir>/org.Morg.eg.db \
+  -f <OrgDB_output_dir> \
+  -t <threads> \
+  --gene <target_gene_list> \
+  -o <output_dir>
 ```
 
 ## Examples
