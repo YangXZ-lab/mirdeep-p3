@@ -357,6 +357,24 @@ mirdeep-p3 analysis Differential_expression \
 >    (e.g. `PCA_scatter.pdf`, `PCA_scatter.png`) — use whichever suits your needs.
 > 2. `--case1` and `--case2` must have the same number of columns (replicates). `--case1` and `--case2` cannot have any intersection.
 
+### miRNA functional analysis
+#### download emapperdb form **eggnog** (http://eggnog5.embl.de/download/emapperdb-5.0.2/) (Choose the latest version)
+```bash
+##1 download and decompress (recommend in /PATH_to_mirdeep-p3/data/eggnog_data_dir/)
+wget http://eggnog5.embl.de/download/emapperdb-5.0.2/eggnog.db.gz
+wget http://eggnog5.embl.de/download/emapperdb-5.0.2/eggnog.taxa.tar.gz
+wget http://eggnog5.embl.de/download/emapperdb-5.0.2/eggnog_proteins.dmnd.gz
+wget http://eggnog5.embl.de/download/emapperdb-5.0.2/mmseqs.tar.gz
+wget http://eggnog5.embl.de/download/emapperdb-5.0.2/pfam.tar.gz
+gunzip eggnog.db.gz
+gunzip eggnog_proteins.dmnd.gz
+tar xzvf eggnog.taxa.tar.gz
+tar xzvf mmseqs.tar.gz
+tar xzvf pfam.tar.gz
+##2 set EGGNOG_DATA_DIR
+conda env config vars set EGGNOG_DATA_DIR=/PATH_to_mirdeep-p3/data/eggnog_data_dir
+```
+
 ## Examples
 See:
 - `examples/` for minimal runnable examples
