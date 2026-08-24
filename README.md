@@ -1,5 +1,5 @@
 # miRDeep-P3
-[一句话说明：这是做什么的。例：A reproducible pipeline for miRNA discovery and quantification from small RNA-seq.]
+A comprehensive pipeline for plant miRNA discovery, annotation and downstream functional analysis from small RNA-seq data.
 
 ## Highlights
 
