@@ -93,20 +93,22 @@ GOSemSim, DOSE, AnnotationForge, ggtree, Biostrings, GenomicRanges
 ## Installation
 ### Option A: Conda (recommended)
 ```bash
-conda env create -f environment.yml
-conda activate [env-name]
+conda install mirdeep-p3
 ```
 
-### Option B: Pip
+### Option B: From source
 ```bash
-pip install -r requirements.txt
-# or
-pip install .
+git clone https://github.com/YangXZ-lab/mirdeep-p3.git
+cd mirdeep-p3
+conda env create -f mirdp3_environment.yml -n mirdp3
+conda activate mirdp3
+chmod 755 mirdeep-p3
+mirdeep-p3 -h
 ```
 
 ### Option C: Docker
 ```bash
-docker build -t [image-name] .
+docker build -t [image-name].
 docker run --rm -it [image-name] --help
 ```
 
