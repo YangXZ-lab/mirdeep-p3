@@ -453,6 +453,11 @@ pytest -q
 # or
 bash tests/run_smoke_test.sh
 ```
+CI (GitHub Actions) should validate:
+- Lint/format
+- Unit tests
+- Small end-to-end toy dataset
+
 ## Construct new core dataset and evaluation
 ```bash
 python scripts/mirdp3_core_build.py \
@@ -524,10 +529,6 @@ python bin/anno_miRNA.py \
 ###anno.fasta, renamed miRNA
 ###anno.map, rename map
 ```
-CI (GitHub Actions) should validate:
-- Lint/format
-- Unit tests
-- Small end-to-end toy dataset
 
 ## Troubleshooting / FAQ
 ### Q1: [Common error]
