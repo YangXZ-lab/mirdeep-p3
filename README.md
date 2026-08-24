@@ -109,6 +109,7 @@ mirdeep-p3 -h
 ### Option C: Docker
 ```bash
 # c1
+wget https://github.com/YangXZ-lab/mirdeep-p3/releases/download/v3.1.4c-full/mirdeep-p3-3.1.4c-full.tar.gz
 ## Extract and import
 gunzip -c mirdeep-p3-3.1.4c-full.tar.gz | docker load
 ## or
