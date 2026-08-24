@@ -74,17 +74,21 @@ flowchart LR
 ```
 
 ## Requirements
-### Supported Platforms
-- Linux (recommended)
-- macOS (partial/optional)
-- Windows (WSL recommended)
 
-### Dependencies
-- [Python >= 3.10] / [R >= 4.3] / [Nextflow/Snakemake] / ...
-- [bowtie/bwa/star/samtools/bedtools/...] (按你的项目写)
-- Optional: Docker / Singularity
+All dependencies are managed via conda. See
+[`mirdp3_environment.yml`](mirdp3_environment.yml) for the full list.
 
-> 建议把完整依赖放到 `environment.yml`、`requirements.txt` 或 `pyproject.toml`，README 只列关键项。
+**Core tools**: Python ≥3.9, R ≥4.2, Bowtie 1.3, Bowtie2, SAMtools,
+BEDTools, SeqKit, ViennaRNA (RNAfold), Trim Galore
+
+**Annotation/homology**: BLAST, HMMER, FASTA3 (ssearch), MMseqs2,
+DIAMOND, eggNOG-mapper, MEME (FIMO), Prodigal, GFFread
+
+**R plotting**: ggplot2, dplyr, tidyr, circlize, ComplexHeatmap,
+svglite, patchwork, viridis, igraph/ggraph
+
+**Bioconductor**: clusterProfiler, DESeq2, apeglm, enrichplot,
+GOSemSim, DOSE, AnnotationForge, ggtree, Biostrings, GenomicRanges
 
 ## Installation
 ### Option A: Conda (recommended)
