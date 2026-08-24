@@ -110,23 +110,23 @@ mirdeep-p3 -h
 ```bash
 # c1
 ## Extract and import
-gunzip -c mirdeep-p3-3.1.4c.tar.gz | docker load
+gunzip -c mirdeep-p3-3.1.4c-full.tar.gz | docker load
 ## or
-docker load -i mirdeep-p3-3.1.4c.tar.gz
+docker load -i mirdeep-p3-3.1.4c-full.tar.gz
 
 ## Make sure the image is loaded.
 docker images | grep mirdeep
 
 # c2
 ## Pull from Docker Hub / GHCR
-docker pull <yourname>/mirdeep-p3:3.1.4c
+docker pull <yourname>/mirdeep-p3:3.1.4c-full
 ## Optional: Rename to short name
-docker tag <yourname>/mirdeep-p3:3.1.4c mirdeep-p3:3.1.4c
+docker tag <yourname>/mirdeep-p3:3.1.4c-full mirdeep-p3:3.1.4c-full
 
 # View help
-docker run --rm mirdeep-p3:3.1.4c -h
+docker run --rm mirdeep-p3:3.1.4c-full -h
 # Enter the container interactively (debug/view output)
-docker run --rm -it -v $(pwd):/data mirdeep-p3:3.1.4c /bin/bash
+docker run --rm -it -v $(pwd):/data mirdeep-p3:3.1.4c-full /bin/bash
 ```
 
 ## Usage
