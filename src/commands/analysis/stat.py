@@ -24,7 +24,7 @@ def add_arguments(parser: argparse.ArgumentParser):
                         help="Generate RNA secondary structure plots")
     parser.add_argument("--list",
                         help="Comma-separated list of miRNA IDs for RNA plotting (e.g., 'Sta-MIR157a,Sta-MIR156a')")
-    parser.add_argument("-h", "--help", action="store_true",
+    parser.add_argument("-h", "--help", action="help",
                         help="Show this help message and exit.")
 
 

@@ -78,7 +78,7 @@ def add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--no-reads_clean", dest="reads_clean", action="store_false",
                         help="Disable read cleaning")
 
-    parser.add_argument("-h", "--help", action="store_true", help="Show this help message and exit.")
+    parser.add_argument("-h", "--help", action="help", help="Show this help message and exit.")
 
 # ----------------------------------------------------------------------
 def parse_input_files(config: Dict, args) -> List[Path]:

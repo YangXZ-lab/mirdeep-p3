@@ -15,6 +15,8 @@ from pathlib import Path
 
 
 def add_arguments(parser: argparse.ArgumentParser):
+    parser.add_argument("-h", "--help", action="help",
+                        help="Show this help message and exit.")
     parser.add_argument("-b", "--basic", required=True, help="Input basic-info file from annotation")
     parser.add_argument("-c", "--count", required=True, help="Input count file (mature.count)")
     parser.add_argument("-r", "--rpm", required=True, help="Input RPM file (mature.exp)")

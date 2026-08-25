@@ -63,7 +63,7 @@ def add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--bedtools", help="path to bedtools")
     parser.add_argument("--seqkit", help="path to seqkit")
 
-    parser.add_argument("-h", "--help", action="store_true", help="Show this help message and exit.")
+    parser.add_argument("-h", "--help", action="help", help="Show this help message and exit.")
 
 
 def ensure_defaults(args):

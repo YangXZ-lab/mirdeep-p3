@@ -20,6 +20,8 @@ from datetime import datetime
 
 def add_arguments(parser: argparse.ArgumentParser):
     """Define Differential_expression-specific arguments."""
+    parser.add_argument("-h", "--help", action="help",
+                        help="Show this help message and exit.")
     parser.add_argument("-c", "--count", required=True,
                         help="Input count matrix file (e.g., mature.count)")
     parser.add_argument("-r", "--rpm", required=True,
