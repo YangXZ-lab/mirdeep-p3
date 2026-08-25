@@ -42,6 +42,11 @@ def run_cmd(cmd, description="", exit_on_fail=True):
     return result
 
 
+def is_empty_file(path):
+    """Return True if file does not exist or has size 0."""
+    return (not os.path.exists(path)) or (os.path.getsize(path) == 0)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Annotate novel miRNAs and rename them according to a reference database.")
@@ -133,6 +138,8 @@ def main():
     # ================================================================
     # STEP 1: BLAST alignment of query against reference
     # ================================================================
+    skip_alncl = False  # whether to skip using --alncl in final mapping
+
     run_cmd(
         f"blastn -task blastn-short "
         f"-query {input_fa} "
@@ -143,105 +150,152 @@ def main():
         "Aligning query sequences against reference database"
     )
 
-    run_cmd(f"cat {anno_aln} | awk '$4>=13{{ print $0 }}' > {anno_aln_filter}",
-            "Filtering alignments with length >= 13")
+    if is_empty_file(anno_aln):
+        print("No alignments found (anno.aln empty). Skipping rest of Step 1.", file=sys.stderr)
+        skip_alncl = True
+    else:
+        run_cmd(f"cat {anno_aln} | awk '$4>=13{{ print $0 }}' > {anno_aln_filter}",
+                "Filtering alignments with length >= 13")
 
-    run_cmd(f"cat {input_fa} {pmiren_fa} > {anno_total}",
-            "Merging input and reference FASTA for scoring")
+        if is_empty_file(anno_aln_filter):
+            print("No alignments >=13 bp. Skipping rest of Step 1.", file=sys.stderr)
+            skip_alncl = True
+        else:
+            run_cmd(f"cat {input_fa} {pmiren_fa} > {anno_total}",
+                    "Merging input and reference FASTA for scoring")
 
-    run_cmd(f"python {scoring_script} -i {anno_aln_filter} -f {anno_total} -o {anno_score}",
-            "Scoring filtered alignments")
+            run_cmd(f"python {scoring_script} -i {anno_aln_filter} -f {anno_total} -o {anno_score}",
+                    "Scoring filtered alignments")
 
-    run_cmd(f"python {stat_script} -i {anno_score} -o {anno_score_stat}",
-            "Extracting per-query best scores")
+            if is_empty_file(anno_score):
+                print("Scoring produced empty file. Skipping rest of Step 1.", file=sys.stderr)
+                skip_alncl = True
+            else:
+                run_cmd(f"python {stat_script} -i {anno_score} -o {anno_score_stat}",
+                        "Extracting per-query best scores")
 
-    run_cmd(f"python {filter_script} -s {anno_score} -m {anno_score_stat} -t {args.threshold} -o {anno_score_filter}",
-            f"Applying score threshold (>= {args.threshold})")
+                run_cmd(f"python {filter_script} -s {anno_score} -m {anno_score_stat} -t {args.threshold} -o {anno_score_filter}",
+                        f"Applying score threshold (>= {args.threshold})")
 
-    run_cmd(
-        f"python {assign_script} -i {anno_score_filter} "
-        f"-f {input_fa} "
-        f"-o {anno_assigned} "
-        f"-s {anno_assigned_stat}",
-        "Assigning families to aligned queries"
-    )
+                if is_empty_file(anno_score_filter):
+                    print("Score filter produced empty file. Skipping rest of Step 1.", file=sys.stderr)
+                    skip_alncl = True
+                else:
+                    run_cmd(
+                        f"python {assign_script} -i {anno_score_filter} "
+                        f"-f {input_fa} "
+                        f"-o {anno_assigned} "
+                        f"-s {anno_assigned_stat}",
+                        "Assigning families to aligned queries"
+                    )
+
+                    if is_empty_file(anno_assigned):
+                        print("Family assignment produced empty file. Skipping rest of Step 1.", file=sys.stderr)
+                        skip_alncl = True
 
     # ================================================================
     # STEP 2: Extract unaligned sequences
     # ================================================================
-    run_cmd(
-        f"cat {input_fa} | grep '>' | sed 's/>//g' | "
-        f"awk 'NR==FNR {{a[$1];next}} {{if(!($1 in a)){{ print $0 }}}}' {anno_assigned} - | "
-        f"seqkit grep -n -f - {input_fa} -o {nonaln_fa}",
-        "Extracting unassigned sequences"
-    )
+    if skip_alncl:
+        # No usable aligned results, use input directly as nonaln_fa
+        nonaln_fa = input_fa
+        print("Using input as nonaln_fa because Step 1 produced no usable alignments.", file=sys.stderr)
+    else:
+        # Extract sequences not assigned to any family
+        run_cmd(
+            f"cat {input_fa} | grep '>' | sed 's/>//g' | "
+            f"awk 'NR==FNR {{a[$1];next}} {{if(!($1 in a)){{ print $0 }}}}' {anno_assigned} - | "
+            f"seqkit grep -n -f - {input_fa} -o {nonaln_fa}",
+            "Extracting unassigned sequences"
+        )
 
     # ================================================================
     # STEP 3: Self-alignment and clustering of unaligned sequences
     # ================================================================
-    run_cmd(f"makeblastdb -in {nonaln_fa} -dbtype nucl -out {nonaln_db}",
-            "Building BLAST database for unassigned sequences")
+    if is_empty_file(nonaln_fa):
+        print("No unaligned sequences. Skipping Step 3.", file=sys.stderr)
+        # No self-alignment, so single and multi files should be considered empty
+        single_available = False
+        multi_available = False
+    else:
+        run_cmd(f"makeblastdb -in {nonaln_fa} -dbtype nucl -out {nonaln_db}",
+                "Building BLAST database for unassigned sequences")
 
-    run_cmd(
-        f"blastn -task blastn-short "
-        f"-query {nonaln_fa} "
-        f"-db {nonaln_db} "
-        f"-outfmt \"6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue qseq sseq\" "
-        f"-out {nonaln_aln} "
-        f"-num_threads {args.threads}",
-        "Self-aligning unassigned sequences"
-    )
+        run_cmd(
+            f"blastn -task blastn-short "
+            f"-query {nonaln_fa} "
+            f"-db {nonaln_db} "
+            f"-outfmt \"6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue qseq sseq\" "
+            f"-out {nonaln_aln} "
+            f"-num_threads {args.threads}",
+            "Self-aligning unassigned sequences"
+        )
 
-    run_cmd(f"cat {nonaln_aln} | awk '$4>=13{{ print $0 }}' > {nonaln_aln_filter}",
-            "Filtering self-alignments with length >= 13")
+        run_cmd(f"cat {nonaln_aln} | awk '$4>=13{{ print $0 }}' > {nonaln_aln_filter}",
+                "Filtering self-alignments with length >= 13")
 
-    run_cmd(f"python {scoring_script} -i {nonaln_aln_filter} -f {nonaln_fa} -o {nonaln_score}",
-            "Scoring self-alignments")
+        run_cmd(f"python {scoring_script} -i {nonaln_aln_filter} -f {nonaln_fa} -o {nonaln_score}",
+                "Scoring self-alignments")
 
-    # Single and multi classification
-    run_cmd(
-        f"cat {nonaln_score} | sed '1d' | awk '$NF>=75{{ print $0 }}' | "
-        f"awk '{{sum[$1]+=1;a[$2]+=1}}END{{for(i in sum){{ print i\"\\t\"sum[i]\"\\t\"a[i] }}}}' | "
-        f"awk '$2==1&&$3==1{{ print $1 }}' > {single_file}",
-        "Identifying single-copy unassigned miRNAs"
-    )
+        # Single and multi classification
+        run_cmd(
+            f"cat {nonaln_score} | sed '1d' | awk '$NF>=75{{ print $0 }}' | "
+            f"awk '{{sum[$1]+=1;a[$2]+=1}}END{{for(i in sum){{ print i\"\\t\"sum[i]\"\\t\"a[i] }}}}' | "
+            f"awk '$2==1&&$3==1{{ print $1 }}' > {single_file}",
+            "Identifying single-copy unassigned miRNAs"
+        )
 
-    run_cmd(
-        f"cat {nonaln_score} | sed '1d' | awk '$NF>=75{{ print $0 }}' | "
-        f"awk '{{sum[$1]+=1;a[$2]+=1}}END{{for(i in sum){{ print i\"\\t\"sum[i]\"\\t\"a[i] }}}}' | "
-        f"awk '$2!=1||$3!=1{{ print $1 }}' > {multi_file}",
-        "Identifying multi-copy unassigned miRNAs"
-    )
+        run_cmd(
+            f"cat {nonaln_score} | sed '1d' | awk '$NF>=75{{ print $0 }}' | "
+            f"awk '{{sum[$1]+=1;a[$2]+=1}}END{{for(i in sum){{ print i\"\\t\"sum[i]\"\\t\"a[i] }}}}' | "
+            f"awk '$2!=1||$3!=1{{ print $1 }}' > {multi_file}",
+            "Identifying multi-copy unassigned miRNAs"
+        )
 
-    # Extract multi scores (non-self, both query and target in multi set)
-    run_cmd(
-        f"cat {nonaln_score} | "
-        f"awk 'NR==FNR {{a[$1];next}} {{if($1 in a){{ print $0 }}}}' {multi_file} - | "
-        f"awk '$1!=$2{{ print $0 }}' | "
-        f"awk 'NR==FNR {{a[$1];next}} {{if($2 in a){{ print $0 }}}}' {multi_file} - > {multi_score}",
-        "Extracting multi-copy alignments for clustering"
-    )
+        single_available = not is_empty_file(single_file)
+        multi_available = not is_empty_file(multi_file)
 
-    run_cmd(f"python {bowtie_filter_script} -i {multi_score} -o {multi_score_filter}",
-            "Filtering multi-copy scores")
+        # Process multi if available
+        if multi_available:
+            run_cmd(
+                f"cat {nonaln_score} | "
+                f"awk 'NR==FNR {{a[$1];next}} {{if($1 in a){{ print $0 }}}}' {multi_file} - | "
+                f"awk '$1!=$2{{ print $0 }}' | "
+                f"awk 'NR==FNR {{a[$1];next}} {{if($2 in a){{ print $0 }}}}' {multi_file} - > {multi_score}",
+                "Extracting multi-copy alignments for clustering"
+            )
 
-    run_cmd(f"python {cluster_script} -i {multi_score_filter} -o {cluster_file}",
-            "Clustering multi-copy miRNAs")
+            run_cmd(f"python {bowtie_filter_script} -i {multi_score} -o {multi_score_filter}",
+                    "Filtering multi-copy scores")
+
+            run_cmd(f"python {cluster_script} -i {multi_score_filter} -o {cluster_file}",
+                    "Clustering multi-copy miRNAs")
+        else:
+            print("No multi-copy miRNAs. Skipping multi clustering.", file=sys.stderr)
 
     # ================================================================
     # STEP 4: Merge all families into a single mapping
     # ================================================================
-    remap_cmd = (
-        f"python {remap_script} "
-        f"-f {pmiren_fa} "
-        f"--alncl {anno_assigned} "
-        f"--single {single_file} "
-        f"--multi {cluster_file} "
-        f"--type {args.type} "
-    )
+    # Determine which inputs are available for remap
+    alncl_available = (not skip_alncl) and (not is_empty_file(anno_assigned))
+    # single_available, multi_available already set above (or default False if Step3 skipped)
+
+    if not (alncl_available or single_available or multi_available):
+        sys.exit("Error: no annotated families found from any source. Nothing to do.")
+
+    remap_parts = [f"python {remap_script}", f"-f {pmiren_fa}"]
+    if alncl_available:
+        remap_parts.append(f"--alncl {anno_assigned}")
+    if single_available:
+        remap_parts.append(f"--single {single_file}")
+    if multi_available:
+        remap_parts.append(f"--multi {cluster_file}")
+    remap_parts.append(f"--type {args.type}")
     if args.type == 'MIR':
-        remap_cmd += f"-s {args.start} "
-    remap_cmd += f"-o {anno_map}"
+        remap_parts.append(f"-s {args.start}")
+    remap_parts.append(f"-o {anno_map}")
+    remap_cmd = " ".join(remap_parts)
+
     run_cmd(remap_cmd, "Creating unified family mapping")
 
     # ================================================================
