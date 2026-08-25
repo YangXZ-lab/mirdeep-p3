@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  # ------------------------------------------------------------------
+  # Level 1: smoke test (seconds) - CLI boots, help renders, imports OK
+  # ------------------------------------------------------------------
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Version banner
+        run: python mirdeep-p3 --version
+
+      - name: Help renders for all subcommands
+        run: |
+          python mirdeep-p3 -h > /dev/null
+          python mirdeep-p3 identification -h > /dev/null
+          python mirdeep-p3 annotation -h > /dev/null
+          python mirdeep-p3 analysis -h > /dev/null
+
+      - name: All command modules import cleanly
+        run: |
+          python -c "import sys; sys.path.insert(0,'src'); \
+                     import commands.identification, commands.annotation, \
+                            commands.analysis; \
+                     print('imports OK')"
+
+  # ------------------------------------------------------------------
+  # Level 2: identification end-to-end (minutes) - core pipeline path
+  # Requires: tests/data/mini.fq, tests/data/mini_genome.fasta
+  # ------------------------------------------------------------------
+  e2e-identification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          python-version: '3.9'
+
+      - name: Install external tools
+        shell: bash -l {0}
+        run: |
+          conda install -y -c bioconda -c conda-forge \
+            bowtie trim-galore samtools bedtools viennarna
+
+      - name: Run identification on mini dataset
+        shell: bash -l {0}
+        run: |
+          python mirdeep-p3 identification \
+            -i tests/data/mini.fq \
+            -o tests/output \
+            -g tests/data/mini_genome.fasta \
+            -t 2
+
+      - name: Verify key outputs exist
+        run: |
+          test -s tests/output/*/processed.fa && echo "processed OK"
+          test -s tests/output/*/precursors.fa && echo "precursors OK"
+          test -s tests/output/*/predictions && echo "predictions OK"
+
+  # ------------------------------------------------------------------
+  # Level 3: annotation fast-path (minutes) - reuse existing mature data
+  # Requires: tests/data/annotation_input/ (Ath_v2_mature.* intermediate files)
+  # ------------------------------------------------------------------
+  e2e-annotation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          python-version: '3.9'
+
+      - name: Install tools
+        shell: bash -l {0}
+        run: |
+          conda install -y -c bioconda -c conda-forge \
+            bowtie blast seqkit bedtools viennarna
+
+      - name: Run annotation on mature test data
+        shell: bash -l {0}
+        run: |
+          python mirdeep-p3 annotation \
+            -i tests/data/annotation_input \
+            -o tests/output_anno \
+            --prefix_miRNA test \
+            --species "Arabidopsis thaliana" \
+            -t 2
+
+      - name: Verify basic-info output
+        run: |
+          test -s tests/output_anno/*/*basic-info* && echo "basic-info OK"
