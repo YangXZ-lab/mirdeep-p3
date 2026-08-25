@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 # Copyright 2026 Jiawen Zhao.
 # All rights reserved.
-
 """
 Combine cluster, singleton and alignment results into a three-column
 miRNA-to-family mapping file.
@@ -20,11 +19,16 @@ Naming behaviour:
   - --type MIRN  : new families use "MIRN" prefix; -s/--start must be omitted,
                    numbering starts at 1.
 
+The input files --alncl, --single, --multi can be used in any combination:
+  - all three provided,
+  - only one or two of them provided.
+At least one of them should be provided to generate a meaningful output.
+
 Usage:
     python merge_family.py --alncl alncl.txt --single single.txt --multi multi.txt \
                            --type MIRN -f known.fasta -o output.txt
-    python merge_family.py --alncl alncl.txt --single single.txt --multi multi.txt \
-                           --type MIR -s 12100 -f known.fasta -o output.txt
+    python merge_family.py --single single.txt --type MIR -s 12100 -f known.fasta -o output.txt
+    python merge_family.py --multi multi.txt --type MIRN -f known.fasta -o output.txt
 """
 
 import argparse
@@ -203,6 +207,10 @@ def main():
                         help='FASTA file with known miRNA families')
     parser.add_argument('-o', '--output', required=True, help='Output mapping file')
     args = parser.parse_args()
+
+    # At least one input file must be provided
+    if not (args.alncl or args.single or args.multi):
+        sys.exit("Error: at least one of --alncl, --single, --multi must be provided.")
 
     # Determine prefix and start number based on --type
     if args.type == 'MIR':
