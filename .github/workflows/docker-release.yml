@@ -38,6 +38,10 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # --- Compute lowercase repo owner for GHCR tag ---
+      - name: Set lowercase owner
+        run: echo "OWNER_LOWER=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
       # --- GHCR login（using GitHub） ---
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -54,7 +58,7 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
-            ghcr.io/${{ github.repository_owner | lower }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+            ghcr.io/${{ env.OWNER_LOWER }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
 
