@@ -100,7 +100,7 @@ conda install mirdeep-p3
 ```bash
 git clone https://github.com/YangXZ-lab/mirdeep-p3.git
 cd mirdeep-p3
-wget [https://github.com/YangXZ-lab/mirdeep-p3/releases/download/mirdeep-p3-v3.1.4c-full/data-index.tar.gz](https://github.com/YangXZ-lab/mirdeep-p3/releases/download/mirdeep-p3-v3.1.4c-full/data-index.tar.gz)
+wget https://github.com/YangXZ-lab/mirdeep-p3/releases/download/mirdeep-p3-v3.1.4c-full/data-index.tar.gz
 tar xJf mirdeep-p3-data-index.tar.xz -C data/
 conda env create -f mirdp3_environment.yml -n mirdp3
 conda activate mirdp3
