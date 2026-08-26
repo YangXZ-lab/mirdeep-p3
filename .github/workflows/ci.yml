@@ -81,7 +81,7 @@ jobs:
       - name: Run identification on mini dataset
         shell: bash -l {0}
         run: |
-          mirdeep-p3 identification \
+          ./mirdeep-p3 identification \
             -i tests/data/mini.fq \
             -o tests/output \
             -g tests/data/mini_genome.fasta \
@@ -142,7 +142,7 @@ jobs:
       - name: Run annotation on identification output
         shell: bash -l {0}
         run: |
-          mirdeep-p3 annotation \
+          ./mirdeep-p3 annotation \
             -i tests/output/mini \
             -g tests/data/mini_genome.fasta \
             -d tests/output/mini/index/genome_index \
