@@ -454,8 +454,9 @@ mirdeep-p3 analysis Onestep \
 > 2. All available parameters are the same as those used in the preceding steps.
 ## Examples
 See:
-- `examples/` for minimal runnable examples
+- `examples/` for some examples datas used to test additional features 
 - `docs/` for extended tutorials
+- `tests/data` for minimal runnable examples
 
 ## Reproducibility
 This repository provides:
