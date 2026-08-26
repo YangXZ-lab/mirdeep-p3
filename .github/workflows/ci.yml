@@ -149,6 +149,26 @@ jobs:
           name: e2e-data
           path: .
 
+      - name: Pre-check annotation inputs
+        shell: bash -l {0}
+        run: |
+          set -x
+          echo "=== data dir ==="
+          ls -la data/ 2>&1 | head -10
+          echo "=== PmiREN fasta ==="
+          ls -la data/PmiREN-20260810-isoform.fa 2>&1
+          echo "=== isoform-in index ==="
+          ls -la data/index/isoform-in* 2>&1 | head -8
+          echo "=== blast version ==="
+          blastn -version 2>&1 | head -2
+          echo "=== bowtie_scoring_blastn.py exists? ==="
+          ls -la scripts/bowtie_scoring_blastn.py 2>&1
+          echo "=== anno_miRNA.py exists? ==="
+          ls -la bin/anno_miRNA.py 2>&1
+          echo "=== identification output mini dir ==="
+          ls tests/output/mini/ 2>&1 | head -10
+          echo "=== PRE-CHECK DONE ==="
+
       - name: Run annotation on identification output
         shell: bash -l {0}
         run: |
@@ -161,6 +181,9 @@ jobs:
             --prefix mirdp3-test \
             --species "Arabidopsis thaliana" \
             -o tests/output/annotation
+          echo "=== ANNOTATION LOG (if failed) ==="
+          tail -50 tests/output/annotation/mirdp3-test/temp/*.log 2>/dev/null || echo "no log found"
+          find tests/output/annotation -name "*.log" 2>/dev/null
 
       - name: Verify basic-info output
         shell: bash -l {0}
