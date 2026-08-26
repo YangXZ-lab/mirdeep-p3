@@ -11,14 +11,13 @@ source:
 build:
   number: 0
   noarch: generic
-  script: build.sh
 
 requirements:
   # Runtime dependencies with version constraints
   # (mirrored from mirdp3_environment.yml; keep both in sync)
   run:
     # Python core
-    - python >=3.12,<3.13
+    - python >=3.9
     - biopython >=1.81
     - numpy >=1.26
     - pyyaml >=6.0
@@ -82,7 +81,15 @@ requirements:
     - bioconductor-go.db >=3.18
     - bioconductor-keggrest >=1.42
 
+test:
+  commands:
+    - mirdeep-p3 --version
+    - mirdeep-p3 -h
+    - mirdeep-p3 identification -h
+
 about:
   home: https://github.com/YangXZ-lab/mirdeep-p3
-  license: MIT
+  license: BSD-3-Clause
+  license_family: BSD
+  license_file: ../LICENSE
   summary: "Plant miRNA discovery and functional annotation pipeline"
