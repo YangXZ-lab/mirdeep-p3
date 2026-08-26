@@ -167,6 +167,19 @@ jobs:
           ls -la bin/anno_miRNA.py 2>&1
           echo "=== identification output mini dir ==="
           ls tests/output/mini/ 2>&1 | head -10
+          echo "=== DIRECT blastn test with isoform-in ==="
+          head -50 tests/output/mini/mini_filter_P_prediction > /tmp/test_query.fa
+          # Convert BED-like to FASTA is complex; test with genome segment instead
+          head -c 2000 tests/data/mini_genome.fasta > /tmp/test_genome_seg.fa
+          echo ">test_segment" > /tmp/test_q.fa
+          grep -v "^>" /tmp/test_genome_seg.fa | head -1 | cut -c1-50 >> /tmp/test_q.fa
+          cat /tmp/test_q.fa
+          echo "--- blastn run ---"
+          blastn -task blastn-short -query /tmp/test_q.fa -db data/index/isoform-in \
+            -outfmt "6 qseqid sseqid pident length" -out /tmp/test_blast.out -num_threads 2 2>&1 | head -20
+          echo "blast exit: $?"
+          echo "--- blast output ---"
+          head -5 /tmp/test_blast.out 2>&1
           echo "=== PRE-CHECK DONE ==="
 
       - name: Run annotation on identification output
@@ -182,8 +195,15 @@ jobs:
             --species "Arabidopsis thaliana" \
             -o tests/output/annotation
           echo "=== ANNOTATION LOG (if failed) ==="
-          tail -50 tests/output/annotation/mirdp3-test/temp/*.log 2>/dev/null || echo "no log found"
-          find tests/output/annotation -name "*.log" 2>/dev/null
+          find tests/output/annotation -name "*_annotation.log" -o -name "*.log" 2>/dev/null
+          for lg in $(find tests/output/annotation -name "*_annotation.log" 2>/dev/null); do
+            echo "--- $lg ---"
+            tail -60 "$lg"
+          done
+          echo "=== temp/temp dir contents ==="
+          ls -la tests/output/annotation/mirdp3-test/temp/temp/ 2>&1 | head -20
+          echo "=== temp dir contents ==="
+          ls -la tests/output/annotation/mirdp3-test/temp/ 2>&1 | head -20
 
       - name: Verify basic-info output
         shell: bash -l {0}
