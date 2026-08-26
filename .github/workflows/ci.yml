@@ -66,11 +66,15 @@ jobs:
         run: chmod 755 mirdeep-p3
 
       # rfam_index.* needed by identification (ncRNA read filtering);
-      # not in git repo, downloaded from Release
+      # not in git repo, downloaded from Release (private repo -> gh with token)
       - name: Download and extract index data
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p data
-          wget -q https://github.com/YangXZ-lab/mirdeep-p3/releases/download/mirdeep-p3-v3.1.4c-full/data-index.tar.gz
+          gh release download mirdeep-p3-v3.1.4c-full \
+            --repo YangXZ-lab/mirdeep-p3 \
+            --pattern data-index.tar.gz
           tar xzf data-index.tar.gz -C data/
           ls data/index/ | head -5
 
