@@ -9,6 +9,7 @@
 #   ./test.sh            # run full test (identification + annotation)
 #   ./test.sh -q         # quiet mode (suppress pipeline stdout)
 #   ./test.sh -k         # keep test output (default: removed on success)
+#   ./test.sh -t 16      # use 16 threads (default: 8)
 #
 # Exit codes:
 #   0  all tests passed
@@ -26,13 +27,14 @@ INDEX_URL="https://github.com/YangXZ-lab/mirdeep-p3/releases/download/${RELEASE_
 INPUT_FASTQ="${ROOT}/tests/data/mini.fq"
 GENOME="${ROOT}/tests/data/mini_genome.fasta"
 OUT_DIR="${ROOT}/tests/test_output"
-THREADS=2
+THREADS=8
 KEEP_OUTPUT=0
 QUIET=0
 
 # ---- Parse args -------------------------------------------------------------
-while getopts "qkh" opt; do
+while getopts "t:qkh" opt; do
     case "$opt" in
+        t) THREADS="$OPTARG" ;;
         q) QUIET=1 ;;
         k) KEEP_OUTPUT=1 ;;
         h)
