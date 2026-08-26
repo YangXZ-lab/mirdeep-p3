@@ -35,7 +35,7 @@ BANNER = r"""
 ║        miRNA discovery and analysis from deep sequencing     ║
 ╚══════════════════════════════════════════════════════════════╝
 """
-GITHUB_LINK = "https://github.com/yourlab/mirdeep-p3"
+GITHUB_LINK = "https://github.com/YangXZ-lab/mirdeep-p3"
 DESCRIPTION = "Comprehensive miRNA prediction, annotation, and downstream analysis."
 
 # ----------------------------------------------------------------------
