@@ -68,20 +68,24 @@ jobs:
       # rfam_index.* needed by identification (ncRNA read filtering);
       # not in git repo, downloaded from Release (private repo -> gh with token)
       - name: Download and extract index data
+        shell: bash -l {0}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euxo pipefail
           mkdir -p data
+          pwd
+          echo "=== gh release download ==="
           gh release download mirdeep-p3-v3.1.4c-full \
             --repo YangXZ-lab/mirdeep-p3 \
             --pattern data-index.tar.gz
+          ls -la data-index.tar.gz 2>&1 || echo "download FAILED"
+          echo "=== tar extract ==="
           tar xzf data-index.tar.gz -C data/
           echo "=== DEBUG: data/index contents ==="
           ls -la data/index/ 2>&1 | head -20
           echo "=== DEBUG: rfam_index files present? ==="
           ls data/index/rfam_index* 2>&1 | head -10
-          echo "=== DEBUG: bowtie dry run on rfam_index ==="
-          bowtie -v 0 data/index/rfam_index -f tests/data/mini_genome.fasta 2>&1 | head -10
           echo "=== DEBUG END ==="
 
       - name: Run identification on mini dataset
