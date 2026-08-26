@@ -468,17 +468,6 @@ Recommended practice:
 - Commit `environment.yml` and reference hashes
 - Archive outputs with `results/` + `logs/`
 
-## Testing
-```bash
-pytest -q
-# or
-bash tests/run_smoke_test.sh
-```
-CI (GitHub Actions) should validate:
-- Lint/format
-- Unit tests
-- Small end-to-end toy dataset
-
 ## Construct new core dataset and evaluation
 ```bash
 python scripts/mirdp3_core_build.py \
@@ -550,6 +539,39 @@ python bin/anno_miRNA.py \
 ###anno.fasta, renamed miRNA
 ###anno.map, rename map
 ```
+
+## Testing
+
+Continuous integration (GitHub Actions) automatically runs on every push
+to `main` and on pull requests, covering three levels:
+
+| Level | Job | What it checks | Time |
+|:-----:|-----|----------------|------|
+| 1 | `smoke` | CLI boots, `-h`/`-v` render, all command modules import cleanly | seconds |
+| 2 | `e2e-identification` | End-to-end miRNA identification on a mini Arabidopsis dataset | minutes |
+| 3 | `e2e-annotation` | End-to-end annotation of the identification output | minutes |
+
+Badges:
+
+```markdown
+[![CI](https://github.com/YangXZ-lab/mirdeep-p3/actions/workflows/ci.yml/badge.svg)](https://github.com/YangXZ-lab/mirdeep-p3/actions/workflows/ci.yml)
+```
+
+### Run the test locally (source install)
+
+A self-contained test script is provided — it downloads the optional
+index data if needed, runs identification + annotation on the bundled
+mini dataset, and verifies the outputs:
+
+```bash
+conda activate mirdp3        # or your mirdeep-p3 environment
+./test.sh                    # full E2E test (a few minutes)
+./test.sh -q                 # quiet mode
+./test.sh -k                 # keep test output for inspection
+```
+
+Requires `tests/data/` (mini.fq + mini_genome.fasta) — already included
+in the repository.
 
 ## Troubleshooting / FAQ
 ### Q1: [Common error]
