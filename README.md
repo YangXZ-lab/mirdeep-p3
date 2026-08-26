@@ -556,13 +556,18 @@ If you use **[Project Name]**, please cite:
 You can also use the `CITATION.cff` file.
 
 ## License
-This project is licensed under the **[MIT/BSD-3/GPL-3.0/Apache-2.0]** License. See `LICENSE`.
+This project is licensed under the **[BSD 3-Clause](LICENSE)** License.
+See [LICENSE](LICENSE) for the full text.
+
+miRDeep-P3 invokes external tools (e.g. Bowtie, BLAST, RNAfold) as
+separate processes; those tools retain their own licenses.
+
 
 ## Contributing
 PRs and issues are welcome.
-- Please read `CONTRIBUTING.md`
-- Run tests before submitting
-- Follow code style: `pre-commit run -a`
+- Please read [CONTRIBUTING.md](CONTRIBUTING.md)
+- Run `./test.sh` before submitting
+- Follow PEP 8 code style
 
 ## Contact
 - Maintainer: [Name] ([email])
