@@ -1,5 +1,5 @@
 # miRDeep-P3
-A comprehensive pipeline for plant miRNA discovery, annotation and downstream functional analysis from small RNA-seq data.
+A comprehensive pipeline for plant miRNA discovery, annotation and downstream functional analysis from small RNA (sRNA) sequencing data.
 
 ## Highlights
 
@@ -7,9 +7,9 @@ A comprehensive pipeline for plant miRNA discovery, annotation and downstream fu
   mature/precursor miRNAs in a single workflow (identification →
   annotation → downstream analysis).
 
-- **Multi-group comparison** — parallel processing of replicates
-  (`-r`/`-p`) with consistent miRNA family naming across groups and runs
-  (`--common`/`--consistency`).
+- **Multi-group comparison** — parallel processing of groups
+  (`-r`/`--replicate`) with consistent miRNA family naming across groups
+  and runs (`--common`/`--consistency`).
 
 - **Rich downstream analysis** — target prediction (psRNATarget-based),
   TFBS/promoter analysis (PlantTFDB), expression, enrichment and network
@@ -24,9 +24,6 @@ A comprehensive pipeline for plant miRNA discovery, annotation and downstream fu
 - [Workflow](#workflow)
 - [Requirements](#requirements)
 - [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Input & Output](#input--output)
-- [Configuration](#configuration)
 - [Usage](#usage)
 - [Examples](#examples)
 - [Reproducibility](#reproducibility)
@@ -62,7 +59,7 @@ Typical use cases:
 If you use this software in academic work, please see [Citation](#citation).
 
 ## Workflow
-> 建议放一张流程图（`docs/workflow.png`）或用 Mermaid。
+> Figure: see `docs/workflow.png` (workflow diagram).
 
 ```mermaid
 flowchart LR
@@ -171,7 +168,7 @@ mirdeep-p3 identification \
 ```
 | Parameter | Description | Example |
 |---|---|---|
-| `-i, --input` | Raw sequencing data (FASTQ/FASTA/compressed files，multiple samples can be separated by commas). | `[e.g., sample_1.fq or sample_1.fq,sample_2.fq,sample_3.fq]` |
+| `-i, --input` | Raw sequencing data (FASTQ/FASTA/compressed files, multiple samples can be separated by commas). | `[e.g., sample_1.fq or sample_1.fq,sample_2.fq,sample_3.fq]` |
 | `-o, --output` | Output dir. | `[e.g., output]` |
 | `-g, --genome` | Reference genome FASTA file. | `[e.g., genome.fasta]` |
 | `-d, --index` | Path prefix of a pre-built bowtie index (optional). If not specified, the index is built automatically under the output directory; provide a prefix here to reuse an existing index and skip building. | `[e.g., bowtie_index_prefix]` |
@@ -181,10 +178,10 @@ mirdeep-p3 identification \
 | Path | Description |
 |---|---|
 | `output/mirdp3-identification-<time>.pipe` | Log for this task. |
-| `output/sample_1/<sample>_trimming_report.txt` | trim_galore reslut. |
-| `output/sample_1/<sample>_identification.log` | Log for each step. |
-| `output/sample_1/<sample>.total_reads` | Total reads count. |
-| `output/sample_1/<sample>_filter_P_prediction` | Result of indentification step. |
+| `output/<prefix>/<prefix>.fq_trimming_report.txt` | trim_galore report. |
+| `output/<prefix>/<prefix>_identification.log` | Log for each step. |
+| `output/<prefix>/<prefix>.total_reads` | Total reads count. |
+| `output/<prefix>/<prefix>_filter_P_prediction` | Result of identification step. |
 
 ### Advanced
 - **Custom reference build**: pass your own genome with `-g`; if `-d`
@@ -347,7 +344,7 @@ mirdeep-p3 analysis Differential_expression \
 | `--case2` | Columns corresponding to samples in the treatment group (separated by commas). | `[e.g., 6,7,8]` |
 | `-o, --output` | Output dir. | `[e.g., output]` |
 | `--case1name` | Name of control group (optional, default: case1, must be quoted). | `[e.g., "flower"]` |
-| `--case2name` | Name of treeatment group (optional, default: case2, must be quoted). | `[e.g., "root"]` |
+| `--case2name` | Name of treatment group (optional, default: case2, must be quoted). | `[e.g., "root"]` |
 | `--DEOnly` | Display only the expression patterns of differentially expressed miRNAs (optional). | `[e.g., --DEOnly]` |
 | `--miRNA` | Comma-separated list of miRNA names to display (optional). | `[e.g., Ath-miR156a,Ath-miR157a]` |
 | `-f, --file` | File containing miRNA names, one per line, equivalent to `--miRNA` (optional, conflict with `--miRNA`). | `[e.g., miRNA_list.txt]` |
@@ -367,7 +364,20 @@ mirdeep-p3 analysis Differential_expression \
 > 2. `--case1` and `--case2` must have the same number of columns (replicates). `--case1` and `--case2` cannot have any intersection.
 
 ### miRNA functional analysis
-#### download emapperdb form **eggnog** (http://eggnog5.embl.de/download/emapperdb-5.0.2/) (Choose the latest version)
+#### Download the eggNOG database
+
+eggNOG-mapper provides an official downloader that fetches and validates the
+databases (`download_eggnog_data.py`):
+
+```bash
+# official way (recommended): download the euk (eukaryota) databases
+download_eggnog_data.py -y -f euk --data_dir /PATH_to_mirdeep-p3/data/eggnog_data_dir
+```
+
+Alternatively, download manually from
+`http://eggnog5.embl.de/download/emapperdb-5.0.2/` (choose the latest
+version folder):
+
 ```bash
 ##1 download and decompress (recommend in /PATH_to_mirdeep-p3/data/eggnog_data_dir/)
 wget http://eggnog5.embl.de/download/emapperdb-5.0.2/eggnog.db.gz
@@ -398,14 +408,14 @@ emapper.py --cpu 20 \
   --tax_scope Viridiplantae \
   -i <protein.fasta> \
   -o <output_dir>
-sed '/^##/d' output_dir/*.emapper.annotations | sed 's/#//g'| awk -vFS="\t" -vOFS="\t" '{print $1,$9,$10,$12}' > output_dir/GO.emapper.annotations
+sed '/^##/d' output_dir/*.emapper.annotations | sed 's/#//g'| awk -v FS="\t" -vOFS="\t" '{print $1,$9,$10,$12}' > output_dir/GO.emapper.annotations
 ###3.2.2 build orgdb with emapper annotations
 Rscript bin/build_orgdb.R \
   -i output_dir/GO.emapper.annotations \
   --kojson data/ko00001.json \
   -o <OrgDB_output_dir>
 ###3.2.3 run miRNA functional analysis
-mirdeep-p3.py analysis Functional_analysis \
+mirdeep-p3 analysis Functional_analysis \
   --orgdb <OrgDB_output_dir>/org.Morg.eg.db \
   -f <OrgDB_output_dir> \
   -t <threads> \
@@ -421,7 +431,7 @@ mirdeep-p3.py analysis Functional_analysis \
 | `--orgdb` | Path to OrgDb directory (org.Morg.eg.db) if already built. | `OrgDB_output_dir/org.Morg.eg.db` |
 | `-f, --file` | Path to directory containing pathway2gene and pathway2name files. | `[e.g., OrgDB_output_dir]` |
 | `--EGGNOG_DATA_DIR` | Path to eggNOG data directory (optional, default: data/eggnog_data_dir). | `[e.g., /PATH/eggnog_data_dir/]` |
-| `--kojson` | Path to ko00001.json (otional, default: data/ko00001.json) | `[e.g., ko00001.json]` |
+| `--kojson` | Path to ko00001.json (optional, default: data/ko00001.json) | `[e.g., "ko00001.json"]` |
 | `--target` | miRNA-target file (at least two columns: miRNA, target, conflict with `-g, --gene`). | `[e.g., output/target_finder.tsv]` |
 | `--chord` | Generate chord diagram (optional, only with --target). | `[e.g., --chord]` |
 
@@ -466,7 +476,7 @@ mirdeep-p3 analysis Onestep \
 > 2. All available parameters are the same as those used in the preceding steps.
 ## Examples
 See:
-- `examples/` for some examples datas used to test additional features 
+- `examples/` for example datasets used to test additional features
 - `docs/` for extended tutorials
 - `tests/data` for minimal runnable examples
 
