@@ -92,18 +92,30 @@ GOSemSim, DOSE, AnnotationForge, ggtree, Biostrings, GenomicRanges
 
 ## Installation
 ### Option A: Conda (recommended)
+The conda package bundles all code and index data — install and use directly
+(no extra downloads needed):
+
 ```bash
-conda install mirdeep-p3
+conda install -c jaguares mirdeep-p3
 ```
+
+> The package includes the full `data/index` (isoform-in, rfam, mature
+> indices), so miRNA identification and annotation work out of the box.
 
 ### Option B: From source
 ```bash
 git clone https://github.com/YangXZ-lab/mirdeep-p3.git
 cd mirdeep-p3
-wget https://github.com/YangXZ-lab/mirdeep-p3/releases/download/mirdeep-p3-v3.1.4c-full/data-index.tar.gz
-tar xJf mirdeep-p3-data-index.tar.xz -C data/
+
+# Create the conda environment (all dependencies)
 conda env create -f mirdp3_environment.yml -n mirdp3
 conda activate mirdp3
+
+# Optional: download index data (needed for identification/annotation;
+# the conda and Docker packages already include it)
+wget https://github.com/YangXZ-lab/mirdeep-p3/releases/download/mirdeep-p3-v3.1.4c-full/data-index.tar.gz
+tar xzf data-index.tar.gz -C data/
+
 chmod 755 mirdeep-p3
 mirdeep-p3 -h
 ```
