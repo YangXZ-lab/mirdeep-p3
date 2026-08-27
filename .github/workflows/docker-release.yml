@@ -3,7 +3,7 @@ name: Build and Publish Docker Images
 on:
   push:
     tags:
-      - "v*"
+      - "v*-full"
       - "mirdeep-p3-v*"
   workflow_dispatch:
 
