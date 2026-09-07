@@ -113,6 +113,10 @@ conda activate mirdp3
 wget https://github.com/YangXZ-lab/mirdeep-p3/releases/download/mirdeep-p3-v3.1.4c-full/data-index.tar.gz
 tar xzf data-index.tar.gz -C data/
 
+# Optional: add the miRDeep-P3 installation directory to your PATH.
+# Replace /PATH/mirdeep-p3 with your actual installation path.
+export PATH="/PATH/mirdeep-p3:$PATH"
+
 chmod 755 mirdeep-p3
 mirdeep-p3 -h
 ```
