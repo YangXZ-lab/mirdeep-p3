@@ -102,7 +102,7 @@ jobs:
         run: |
           test -s tests/output/mini/mini-processed.fa && echo "processed OK"
           test -s tests/output/mini/mini_filter_P_prediction && echo "predictions OK"
-          ls tests/output/mini/index/genome_index*.ebwt > /dev/null 2>&1 && echo "index OK"
+          ls tests/output/index/genome_index*.ebwt > /dev/null 2>&1 && echo "index OK"
 
       # Pass identification output + index data to annotation job
       - name: Upload identification output and index data
@@ -188,7 +188,7 @@ jobs:
           ./mirdeep-p3 annotation \
             -i tests/output/mini \
             -g tests/data/mini_genome.fasta \
-            -d tests/output/mini/index/genome_index \
+            -d tests/output/index/genome_index \
             -t 2 \
             --prefix_miRNA "Ath" \
             --prefix mirdp3-test \
