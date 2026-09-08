@@ -220,20 +220,39 @@ def ensure_defaults(args):
     for attr, val in defaults.items():
         if not hasattr(args, attr):
             setattr(args, attr, val)
-            
-            
+
+
+# ----------------------------------------------------------------------
+def is_bowtie_index_complete(index_prefix: Path) -> bool:
+    """
+    Check if all required bowtie index files exist.
+    Supports both small (ebwt) and large (ebwtl) formats.
+    """
+    required_suffixes = ['.1', '.2', '.3', '.4', '.rev.1', '.rev.2']
+    # Determine which extension is in use by checking for .1.ebwt or .1.ebwtl
+    if Path(str(index_prefix) + '.1.ebwt').exists():
+        ext = '.ebwt'
+    elif Path(str(index_prefix) + '.1.ebwtl').exists():
+        ext = '.ebwtl'
+    else:
+        return False
+
+    for suffix in required_suffixes:
+        if not Path(str(index_prefix) + suffix + ext).exists():
+            return False
+    return True
+
+
 # ----------------------------------------------------------------------
 def run_pipeline_for_input(args, input_file: Path, prefix: str, output_root: Path,
-                           genome: Path, index_prefix: str, log_file: Path):
+                           genome: Path, genome_index: Path, log_file: Path):
     temp_dir = output_root / prefix / "temp"
-    index_dir = output_root / prefix / "index"
     log_dir = log_file.parent
     log_dir.mkdir(parents=True, exist_ok=True)
 
     out_prefix = output_root / prefix
     out_prefix.mkdir(parents=True, exist_ok=True)
     temp_dir.mkdir(parents=True, exist_ok=True)
-    index_dir.mkdir(parents=True, exist_ok=True)
 
     # local shortcuts
     null = subprocess.DEVNULL
@@ -307,15 +326,7 @@ def run_pipeline_for_input(args, input_file: Path, prefix: str, output_root: Pat
     subprocess.run(cmd, shell=True, check=True,
                    stdout=null, stderr=open(log_file, 'a'))
 
-    # 4.8 Map to genome (index building)
-    if args.index:
-        genome_index = args.index
-    else:
-        genome_index = index_dir / "genome_index"
-        if not (genome_index.with_suffix('.1.ebwt').exists() or genome_index.with_suffix('.1.ebwtl').exists()):
-            subprocess.run(f"{bowtie_build} -f {genome} {genome_index} >> {log_file} 2>&1",
-                           shell=True, check=True)
-
+    # 4.8 Map to genome (use shared genome index)
     is_large = bool(list(Path(genome_index).parent.glob(Path(genome_index).name + "*.ebwtl")))
     large_flag = " --large-index" if is_large else ""
     processed_aln = temp_dir / f"{prefix}-processed.aln"
@@ -356,7 +367,7 @@ def run_pipeline_for_input(args, input_file: Path, prefix: str, output_root: Pat
                    shell=True, check=True)
 
     # 4.12 Prepare reads signature file
-    prec_index = index_dir / f"{prefix}_precursors"
+    prec_index = temp_dir / f"{prefix}_precursors"
     subprocess.run(f"{bowtie_build} -f {precursors_fa} {prec_index} >> {log_file} 2>&1",
                    shell=True, check=True)
     prec_aln = temp_dir / f"{prefix}_precursors.aln"
@@ -410,11 +421,12 @@ def run_pipeline_for_input(args, input_file: Path, prefix: str, output_root: Pat
 
     return 0
 
-def process_worker(args, input_file, prefix, root, genome, index, logf):
+def process_worker(args, input_file, prefix, root, genome, shared_genome_index, logf):
     """Wrapper that prints start/end for a single input file."""
     print(f"  [start] {prefix}")
-    run_pipeline_for_input(args, input_file, prefix, root, genome, index, logf)
+    run_pipeline_for_input(args, input_file, prefix, root, genome, shared_genome_index, logf)
     print(f"  [done]  {prefix}")
+
 # ----------------------------------------------------------------------
 def run(args):
     """Main entry point for identification subcommand."""
@@ -525,9 +537,8 @@ def run(args):
     args.progress = args.progress or cfg.get("p/progress", DEFAULT_PROGRESS)
 
     print(f"\nProcessing {len(input_files)} input file(s) with {args.progress} parallel process(es).")
+
     # ---- 4. Create pipe file (overview) ----
-    # output_root/{first_prefix?}_identification.pipe   Actually use a single pipe file per whole step.
-    # We'll write it in output root.
     timestamp = datetime.now().strftime("%m%d%Y-%H%M")
     pipe_file = output_root / f"mirdp3-identification-{timestamp}.pipe"
     with open(pipe_file, 'w') as pf:
@@ -535,6 +546,20 @@ def run(args):
             out_dir = output_root / pref
             group_prefix = pref.rsplit('-', 1)[0] if '-' in pref else pref
             pf.write(f"{inp}\t{out_dir}\t{group_prefix}\n")
+
+    # ---- Build shared genome index (if needed) ----
+    shared_index_dir = output_root / "index"
+    shared_index_dir.mkdir(parents=True, exist_ok=True)
+    if args.index:
+        shared_genome_index = Path(args.index)
+    else:
+        shared_genome_index = shared_index_dir / "genome_index"
+        if not is_bowtie_index_complete(shared_genome_index):
+            print("Building index...")
+            bowtie_build_exe = getattr(args, 'bowtie_build', None) or 'bowtie-build'
+            index_log = output_root / "index_build.log"
+            cmd = f"{bowtie_build_exe} -f {genome} {shared_genome_index} >> {index_log} 2>&1"
+            subprocess.run(cmd, shell=True, check=True)
 
     # ---- 5. Run pipelines with status tracking ----
     log_files = []
@@ -548,24 +573,24 @@ def run(args):
             results = []
             for inp, pref, logf in zip(input_files, prefixes, log_files):
                 results.append(pool.apply_async(process_worker,
-                                                (args, inp, pref, output_root, genome, args.index, logf)))
+                                                (args, inp, pref, output_root, genome, shared_genome_index, logf)))
             for res in results:
                 res.get()
     else:
         for inp, pref, logf in zip(input_files, prefixes, log_files):
-            process_worker(args, inp, pref, output_root, genome, args.index, logf)
+            process_worker(args, inp, pref, output_root, genome, shared_genome_index, logf)
 
     # ---- Clean temp file ----
     if args.clean:
         print("Cleaning temporary directories...")
         for pref in set(prefixes):
-            for subdir in ['temp', 'index']:
+            for subdir in ['temp']:
                 target = output_root / pref / subdir
                 if target.exists():
                     shutil.rmtree(target)
 
     print("\nIdentification step completed successfully.")
-    
+
 def build_parser():
     """Return an independent parser for identification arguments (without subcommand)."""
     parser = argparse.ArgumentParser(add_help=False)
