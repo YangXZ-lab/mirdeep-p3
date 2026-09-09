@@ -135,16 +135,20 @@ docker images | grep mirdeep
 
 # c2
 ## Pull from Docker Hub / GHCR
-docker pull merc3dez/mirdeep-p3:tagname
+docker pull merc3dez/mirdeep-p3:tagname (docker pull merc3dez/mirdeep-p3:3.1.5a-full)
 docker pull crpi-rs803yb7s70369gn.cn-beijing.personal.cr.aliyuncs.com/merc3dez/mirdeep-p3:3.1.5a
 ## Optional: Rename to short name
-docker tag merc3dez/mirdeep-p3:3.1.4c-full mirdeep-p3:3.1.4c-full
+docker tag merc3dez/mirdeep-p3:3.1.5a-full mirdeep-p3:3.1.5a-full
 
 # View help
-docker run --rm mirdeep-p3:3.1.4c-full -h
+docker run --rm mirdeep-p3:3.1.5a-full -h
 # Enter the container interactively (debug/view output)
-docker run --rm -it -v $(pwd):/data mirdeep-p3:3.1.4c-full /bin/bash
+docker run --rm -it -v $(pwd):/data mirdeep-p3:3.1.5a /bin/bash
 ```
+> **Note**:
+> 1. Docker images are hosted at https://hub.docker.com/r/merc3dez/mirdeep-p3/tags or https://cr.console.aliyun.com/repository/cn-beijing/merc3dez/mirdeep-p3/images. Please pull the latest tag.
+> 2. Please download the latest release tag from GitHub.
+
 
 ## Usage
 ### Show help
@@ -294,7 +298,7 @@ mirdeep-p3 analysis Target_finder \
 > 1. The scoring scheme follows **psRNATarget** (https://www.zhaolab.org/psRNATarget/), implemented on top of the scripts from [jtremblay/mirnatarget](https://github.com/jtremblay/mirnatarget).
 > 2. Prediction stringency can be tuned with `-e/--evalue` (E-value threshold) and `--GUs` (allowed G:U mismatches).
 > 3. When a basic-info file from a previous `annotation` run is available, `-b/--basic` is preferred over `-i/--input`, since it carries family and strand information that improves target prediction.
-> 4. Since **ssearch36** cannot accept excessively long input paths, it is recommended that the character length of the parameter path not exceed 200.
+> 4. Since **ssearch36** cannot accept excessively long input paths, it is recommended that the character length of the parameter path not exceed 100.
 
 ### miRNA promoter analysis
 ```bash
