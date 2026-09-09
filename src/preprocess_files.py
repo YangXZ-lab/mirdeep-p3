@@ -4,9 +4,9 @@
 # All rights reserved.
 
 """
-Preprocessing module: Convert FastQ files to FastA format with count information
+Preprocessing module: Convert FastQ/FastA files to FastA format with count information
 Main functions:
-1. Read FastQ files
+1. Read FastQ/FastA files
 2. Merge duplicate sequences and count occurrences
 3. Output FastA format with ID format: >read00001_x123
 """
@@ -64,44 +64,69 @@ def parse_fastq(file_path: str) -> Dict[str, int]:
 
 def parse_fasta(file_path: str) -> Dict[str, int]:
     """
-    Parse existing FastA file (if already in count format)
+    Parse a FASTA file and count sequence occurrences.
+    Supports both plain FASTA (no count info) and pre-counted FASTA
+    (header like >read00001_x123).
     
     Args:
-        file_path: Path to FastA file
+        file_path: Path to FASTA file (plain or gzipped)
         
     Returns:
         Dictionary: sequence -> occurrence count
     """
-    sequence_counts = {}
+    sequence_counts = defaultdict(int)
+    
+    # Handle gzipped files
+    if file_path.endswith('.gz'):
+        open_func = gzip.open
+        mode = 'rt'
+    else:
+        open_func = open
+        mode = 'r'
     
     try:
-        with open(file_path, 'r') as f:
-            current_seq = None
+        with open_func(file_path, mode) as f:
+            current_seq_lines = []
+            current_count = 1   # default count for plain FASTA
             
             for line in f:
                 line = line.strip()
+                if not line:
+                    continue
                 
                 if line.startswith('>'):
-                    # Parse count information (format: >read00001_x123)
-                    if '_x' in line:
-                        try:
-                            count = int(line.split('_x')[-1].split()[0])
-                            seq_line = next(f).strip()
-                            sequence_counts[seq_line.upper()] = count
-                        except (ValueError, StopIteration):
-                            print(f"Warning: Cannot parse count information: {line}", file=sys.stderr)
-                elif line:
-                    if current_seq is None:
-                        current_seq = line.upper()
-                        sequence_counts[current_seq] = 1
-                    else:
-                        current_seq += line.upper()
+                    # Save previous sequence if any
+                    if current_seq_lines:
+                        seq = ''.join(current_seq_lines).upper()
+                        sequence_counts[seq] += current_count
+                    
+                    # Parse header to see if it contains count info
+                    header = line[1:]  # remove '>'
+                    current_count = 1  # reset to default
+                    # Look for pattern _x<digits> at the end of header (allow trailing whitespace)
+                    if '_x' in header:
+                        parts = header.rsplit('_x', 1)
+                        if len(parts) == 2:
+                            try:
+                                current_count = int(parts[1].split()[0])
+                            except ValueError:
+                                # if parsing fails, keep count as 1
+                                current_count = 1
+                    current_seq_lines = []
+                else:
+                    # Sequence line
+                    current_seq_lines.append(line.upper())
+            
+            # Don't forget the last sequence
+            if current_seq_lines:
+                seq = ''.join(current_seq_lines).upper()
+                sequence_counts[seq] += current_count
     
     except Exception as e:
-        print(f"Error: Cannot read FastA file {file_path}: {e}", file=sys.stderr)
+        print(f"Error: Cannot read FASTA file {file_path}: {e}", file=sys.stderr)
         sys.exit(1)
     
-    return sequence_counts
+    return dict(sequence_counts)
 
 def write_fasta_with_counts(sequence_counts: Dict[str, int], 
                            output_file: str, 
