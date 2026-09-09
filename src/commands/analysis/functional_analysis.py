@@ -55,15 +55,12 @@ def run(args):
     scripts_dir = project_root / "scripts"
 
     # ---- 1. Parameter validation ----
-    # Determine analysis mode: from protein or pre-built OrgDb
     build_orgdb = args.protein is not None
     if build_orgdb and (args.orgdb is not None or args.file is not None):
         sys.exit("Error: -p/--protein cannot be combined with --orgdb or -f. Use -p to build from scratch.")
     if not build_orgdb:
-        # Must provide both --orgdb and -f
         if not args.orgdb or not args.file:
             sys.exit("Error: when not building (no -p), both --orgdb and -f are required.")
-    # Functional analysis input: must have -g or --target (but not both? can allow both? specify '-g' or '--target' exclusively)
     if args.gene and args.target:
         sys.exit("Error: please specify either -g/--gene or --target, not both.")
     if not args.gene and not args.target:
@@ -76,11 +73,15 @@ def run(args):
         output_dir = Path(args.output)
     else:
         output_dir = Path(f"mirdeep-functional_analysis-{datetime.now().strftime('%m%d%y-%H%M')}")
+
+    # Clear existing output directory to avoid stale files
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # ---- 3. Build orgdb if requested ----
     if build_orgdb:
-        # Check external tools: emapper.py, Rscript (for build_orgdb.R)
+        # Check external tools: emapper.py, Rscript
         tools_ok, missing = check_external_tools({'emapper.py': None, 'Rscript': None})
         if not tools_ok:
             sys.exit("Error: missing required external dependencies (emapper.py, Rscript).")
@@ -89,26 +90,39 @@ def run(args):
         if not protein_fasta.is_file():
             sys.exit(f"Protein FASTA file not found: {protein_fasta}")
 
-        # Resolve eggnog data directory
-        eggnog_data = args.EGGNOG_DATA_DIR or str(data_dir / "eggnog_data_dir")
-        eggnog_data = Path(eggnog_data)
-        if not eggnog_data.is_dir():
-            sys.exit(f"EGGNOG_DATA_DIR not found: {eggnog_data}")
+        # ---- 3a. Preprocess protein FASTA: remove periods from sequences ----
+        protein_clean = output_dir / f"{protein_fasta.stem}.clean{protein_fasta.suffix}"
+        print(f"Cleaning protein sequences (removing '.') to {protein_clean} ...")
+        cmd = f"sed '/^>/! s/\\.//g' {protein_fasta} > {protein_clean}"
+        subprocess.run(cmd, shell=True, check=True)
+        if not protein_clean.is_file() or protein_clean.stat().st_size == 0:
+            sys.exit(f"Error: cleaned protein file was not created or is empty: {protein_clean}")
 
-        # Resolve kojson
-        kojson_file = args.kojson or str(data_dir / "ko00001.json")
-        kojson_file = Path(kojson_file)
+        # Resolve kojson (used later in build_orgdb.R)
+        kojson_file = Path(args.kojson) if args.kojson else data_dir / "ko00001.json"
         if not kojson_file.is_file():
             sys.exit(f"ko00001.json not found: {kojson_file}")
 
-        # ---- 3a. Run eggNOG mapper ----
+        # ---- 3b. Run eggNOG mapper ----
         print("Running eggNOG-mapper...")
         emapper_output_base = output_dir
-        cmd = (f"emapper.py --cpu {args.threads} -m diamond --override --dbmem "
-               f"-d euk --tax_scope Viridiplantae -i {protein_fasta} -o {emapper_output_base}")
+
+        # Determine whether to pass --data_dir based on user specification
+        if args.EGGNOG_DATA_DIR:
+            eggnog_data = Path(args.EGGNOG_DATA_DIR)
+            if not eggnog_data.is_dir():
+                sys.exit(f"EGGNOG_DATA_DIR not found: {eggnog_data}")
+            cmd = (f"emapper.py --data_dir {eggnog_data} --cpu {args.threads} "
+                   f"-m diamond --override --dbmem "
+                   f"-d euk --tax_scope Viridiplantae -i {protein_clean} "
+                   f"-o {emapper_output_base}")
+        else:
+            cmd = (f"emapper.py --cpu {args.threads} -m diamond --override --dbmem "
+                   f"-d euk --tax_scope Viridiplantae -i {protein_clean} "
+                   f"-o {emapper_output_base}")
         subprocess.run(cmd, shell=True, check=True)
 
-        # ---- 3b. Process eggNOG outputs ----
+        # ---- 3c. Process eggNOG outputs ----
         eggnog_annot = emapper_output_base.with_name(emapper_output_base.name + ".emapper.annotations")
         go_annot = emapper_output_base / "Go.eggnog.emapper.annotations"
         subprocess.run(
@@ -117,7 +131,7 @@ def run(args):
             shell=True, check=True
         )
 
-        # ---- 3c. Build OrgDb and pathway files ----
+        # ---- 3d. Build OrgDb and pathway files ----
         build_script = scripts_dir / "build_orgdb.R"
         orgdb_outdir = emapper_output_base
         cmd = (f"Rscript {build_script} -i {go_annot} --kojson {kojson_file} -o {orgdb_outdir}")
