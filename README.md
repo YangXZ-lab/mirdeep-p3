@@ -292,6 +292,7 @@ mirdeep-p3 analysis Target_finder \
 > 1. The scoring scheme follows **psRNATarget** (https://www.zhaolab.org/psRNATarget/), implemented on top of the scripts from [jtremblay/mirnatarget](https://github.com/jtremblay/mirnatarget).
 > 2. Prediction stringency can be tuned with `-e/--evalue` (E-value threshold) and `--GUs` (allowed G:U mismatches).
 > 3. When a basic-info file from a previous `annotation` run is available, `-b/--basic` is preferred over `-i/--input`, since it carries family and strand information that improves target prediction.
+> 4. Since **ssearch36** cannot accept excessively long input paths, it is recommended that the character length of the parameter path not exceed 200.
 
 ### miRNA promoter analysis
 ```bash
