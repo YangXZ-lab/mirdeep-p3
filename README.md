@@ -367,6 +367,7 @@ mirdeep-p3 analysis Differential_expression \
 > 1. All figures are also exported in **PDF and PNG** formats
 >    (e.g. `PCA_scatter.pdf`, `PCA_scatter.png`) — use whichever suits your needs.
 > 2. `--case1` and `--case2` must have the same number of columns (replicates). `--case1` and `--case2` cannot have any intersection.
+> 3. It is recommended that each group have at least `2` replicates, and for formal analysis, at least `3` biological replicates are preferable.
 
 ### miRNA functional analysis
 #### Download the eggNOG database
