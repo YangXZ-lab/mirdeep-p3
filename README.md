@@ -136,7 +136,7 @@ docker images | grep mirdeep
 # c2
 ## Pull from Docker Hub / GHCR
 docker pull merc3dez/mirdeep-p3:tagname
-docker pull crpi-rs803yb7s70369gn.cn-beijing.personal.cr.aliyuncs.com/merc3dez/mirdeep-p3:3.1.4c-full
+docker pull crpi-rs803yb7s70369gn.cn-beijing.personal.cr.aliyuncs.com/merc3dez/mirdeep-p3:3.1.5a
 ## Optional: Rename to short name
 docker tag merc3dez/mirdeep-p3:3.1.4c-full mirdeep-p3:3.1.4c-full
 
