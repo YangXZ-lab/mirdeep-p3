@@ -42,18 +42,7 @@ jobs:
           echo "VERSION=$VER" >> "$GITHUB_ENV"
           echo "Resolved VERSION=$VER"
 
-      # --- Download data index into build context ----
-      # data/index is not in the git repo; fetch the fixed-URL Release asset so
-      # the image is self-contained ("-full"). URL stays constant across versions.
-      - name: Download data index
-        run: |
-          mkdir -p data
-          curl -sL -o data/data-index.tar.gz \
-            https://github.com/YangXZ-lab/mirdeep-p3/releases/download/mirdeep-p3-v3.1.4c-full/data-index.tar.gz
-          tar xzf data-index.tar.gz -C data/
-          ls data/index/ | head -5
-
-      # --- Free disk space (runner ships with Android/.NET/Swift preinstalled) ---
+      # --- Free disk space FIRST (runner ships with Android/.NET/Swift preinstalled) ---
       - name: Free disk space
         uses: jlumbroso/free-disk-space@main
         with:
@@ -65,6 +54,21 @@ jobs:
           docker-images: true
           swap-storage: true
 
+      # --- Download data index into build context ----
+      # data/index is not in the git repo; fetch the fixed-URL Release asset so
+      # the image is self-contained ("-full"). URL stays constant across versions.
+      # gh CLI is pre-authenticated and retries; explicit size check before untar.
+      - name: Download data index
+        run: |
+          mkdir -p data
+          gh release download mirdeep-p3-v3.1.4c-full \
+            --repo "${{ github.repository }}" \
+            --pattern data-index.tar.gz \
+            --dir data --clobber
+          test -s data/data-index.tar.gz || { echo "::error::data-index.tar.gz download failed or empty"; exit 1; }
+          tar xzf data/data-index.tar.gz -C data/
+          rm -f data/data-index.tar.gz
+          ls data/index/ | head -5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -88,7 +92,7 @@ jobs:
       - name: Set lowercase owner
         run: echo "OWNER_LOWER=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
-      # --- GHCR login（using GitHub） ---
+      # --- GHCR login (using GitHub) ---
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -108,7 +112,7 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
 
-      # --- Generate tar.gz（GitHub Release download） ---
+      # --- Generate tar.gz (GitHub Release download) ---
       - name: Save image as tar.gz
         run: |
           docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
