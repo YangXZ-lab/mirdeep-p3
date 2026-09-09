@@ -6,10 +6,14 @@ on:
       - "v*-full"
       - "mirdeep-p3-v*"
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Image version, e.g. 3.1.5a-full (required when dispatching manually)'
+        required: false
+        default: ''
 
 env:
   IMAGE_NAME: mirdeep-p3
-  VERSION: 3.1.4c-full
 
 jobs:
   build-and-push:
@@ -20,6 +24,34 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # --- Resolve image version ----
+      # tag push (v3.1.5a-full) -> VERSION=3.1.5a-full (strip leading v)
+      # manual dispatch  -> use the 'version' input (required)
+      - name: Resolve image version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -z "${{ github.event.inputs.version }}" ]; then
+              echo "::error::workflow_dispatch requires the 'version' input (e.g. 3.1.5a-full)"
+              exit 1
+            fi
+            VER="${{ github.event.inputs.version }}"
+          else
+            VER="${GITHUB_REF_NAME#v}"
+          fi
+          echo "VERSION=$VER" >> "$GITHUB_ENV"
+          echo "Resolved VERSION=$VER"
+
+      # --- Download data index into build context ----
+      # data/index is not in the git repo; fetch the fixed-URL Release asset so
+      # the image is self-contained ("-full"). URL stays constant across versions.
+      - name: Download data index
+        run: |
+          mkdir -p data
+          curl -sL -o data/data-index.tar.gz \
+            https://github.com/YangXZ-lab/mirdeep-p3/releases/download/mirdeep-p3-v3.1.4c-full/data-index.tar.gz
+          tar xzf data-index.tar.gz -C data/
+          ls data/index/ | head -5
 
       # --- Free disk space (runner ships with Android/.NET/Swift preinstalled) ---
       - name: Free disk space
@@ -85,7 +117,7 @@ jobs:
 
       # --- Upload to GitHub Release ---
       - name: Upload to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.IMAGE_NAME }}-${{ env.VERSION }}.tar.gz
