@@ -226,7 +226,9 @@ mirdeep-p3 annotation \
 | `--species` | Species name in the output (must be quoted). | `[e.g., "Arabidopsis thaliana"]` |
 | `--prefix_miRNA` | miRNA prefix in the output (must be quoted). | `[e.g., "Ath"]` |
 | `--prefix` | Prefix of output file (optional). | `[e.g., flower]` |
-
+> **Note**:
+> 1. If using FASTA format as input, please ensure that it is in collapsed FASTA format, with headers similar to `>read00001_x123`.
+> 2. You can use `src/preprocess_files.py` to convert the input FASTA file into the required format.
 | Path | Description |
 |---|---|
 | `output/mirdp3-annotation-<time>.pipe` | Log for this task. |
