@@ -283,15 +283,13 @@ def run_pipeline_for_input(args, input_file: Path, prefix: str, output_root: Pat
             lf.write(f"[info] FASTA input: copied {work_file.name} to {processed_fa}\n")
     else:
         if args.reads_clean:
+            # 使用 --basename 固定输出文件名，避免因输入文件名复杂导致找不到 trimmed 文件
             cmd = (f"{trim_galore} --small_rna --length {min_len} --max_length {max_len} "
-                   f"--dont_gzip --suppress_warn -j 8 -o {out_prefix} {work_file}")
+                   f"--dont_gzip --suppress_warn -j 8 --basename {prefix} "
+                   f"-o {out_prefix} {work_file}")
             subprocess.run(cmd, shell=True, check=True,
                            stdout=null, stderr=open(log_file, 'a'))
-            # predict trimmed output
-            trimmed_base = work_file.stem
-            while '.' in trimmed_base:
-                trimmed_base = Path(trimmed_base).stem
-            trimmed_file = out_prefix / f"{trimmed_base}_trimmed.fq"
+            trimmed_file = out_prefix / f"{prefix}_trimmed.fq"
             if not trimmed_file.exists():
                 sys.exit(f"Trimmed file not found: {trimmed_file}")
         else:
