@@ -1,6 +1,6 @@
 # Construct new core dataset and evaluation
 
-> Moved from README. This guide describes how to build and evaluate
+> This guide describes how to build and evaluate
 > a new PmiREN core dataset, and how to prepare input data.
 
 ## Construct new core dataset and evaluation
