@@ -98,6 +98,7 @@ conda install -c jaguares mirdeep-p3
 
 > The package includes the full `data/index` (isoform-in, rfam, mature
 > indices), so miRNA identification and annotation work out of the box.
+> **Note** : Please download the latest release tag from conda. https://anaconda.org/channels/jaguares/packages/mirdeep-p3/overview.
 
 ### Option B: From source
 ```bash
