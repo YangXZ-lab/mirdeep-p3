@@ -7,12 +7,12 @@ package:
 
 source:
   url: https://github.com/YangXZ-lab/mirdeep-p3/archive/refs/tags/v3.1.6c.tar.gz
-  # TODO(3.1.6c): replace with the sha256 of the tarball above.  It can only be
-  # computed after the tag is pushed (the repository is private, so the download
-  # needs a token):
-  #   curl -sL -H "Authorization: token $GH_TOKEN" <url> | sha256sum
-  # conda-build / anaconda upload / the bioconda PR must not use this placeholder.
-  sha256: PENDING_v3.1.6c
+  # sha256 of the tarball above.  The repository is public, so it can be
+  # recomputed at any time without a token:
+  #   curl -sL <url> | sha256sum
+  # Verified reproducible: both github.com/archive/refs/tags/... and
+  # codeload.github.com/... return the same digest.
+  sha256: bcac254ca85883a1bffd91ec1843d42db19d59f0b1a4430f968e475bc882bfaf
 
 build:
   number: 0
