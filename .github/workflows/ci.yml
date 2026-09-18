@@ -75,8 +75,10 @@ jobs:
           set -euxo pipefail
           mkdir -p data
           pwd
-          echo "=== gh release download ==="
-          gh release download mirdeep-p3-v3.1.4c-full \
+          DATA_INDEX_RELEASE="$(sed -n 's/^DATA_INDEX_RELEASE=//p' data-index.env | head -1 | tr -d '[:space:]')"
+          test -n "$DATA_INDEX_RELEASE" || { echo "::error::DATA_INDEX_RELEASE is not set in data-index.env"; exit 1; }
+          echo "=== gh release download ($DATA_INDEX_RELEASE) ==="
+          gh release download "$DATA_INDEX_RELEASE" \
             --repo YangXZ-lab/mirdeep-p3 \
             --pattern data-index.tar.gz
           ls -la data-index.tar.gz 2>&1 || echo "download FAILED"

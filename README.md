@@ -110,7 +110,9 @@ conda env create -f mirdp3_environment.yml -n mirdp3
 conda activate mirdp3
 
 # Optional: download index data (needed for identification/annotation;
-# the conda and Docker packages already include it)
+# the conda and Docker packages already include it).
+# The data index is versioned separately from the software: the Release below is
+# recorded in data-index.env, which is what CI and test.sh read.
 wget https://github.com/YangXZ-lab/mirdeep-p3/releases/download/mirdeep-p3-v3.1.4c-full/data-index.tar.gz
 tar xzf data-index.tar.gz -C data/
 
@@ -125,26 +127,26 @@ mirdeep-p3 -h
 ### Option C: Docker
 ```bash
 # c1
-wget https://github.com/YangXZ-lab/mirdeep-p3/releases/download/mirdeep-p3-v3.1.4c-full/mirdeep-p3-3.1.4c-full.tar.gz
+wget https://github.com/YangXZ-lab/mirdeep-p3/releases/download/v3.1.6c-full/mirdeep-p3-3.1.6c-full.tar.gz
 ## Extract and import
-gunzip -c mirdeep-p3-3.1.4c-full.tar.gz | docker load
+gunzip -c mirdeep-p3-3.1.6c-full.tar.gz | docker load
 ## or
-docker load -i mirdeep-p3-3.1.4c-full.tar.gz
+docker load -i mirdeep-p3-3.1.6c-full.tar.gz
 
 ## Make sure the image is loaded.
 docker images | grep mirdeep
 
 # c2
 ## Pull from Docker Hub / GHCR
-docker pull merc3dez/mirdeep-p3:tagname (docker pull merc3dez/mirdeep-p3:3.1.5a-full)
-docker pull crpi-rs803yb7s70369gn.cn-beijing.personal.cr.aliyuncs.com/merc3dez/mirdeep-p3:3.1.5a
+docker pull merc3dez/mirdeep-p3:tagname (docker pull merc3dez/mirdeep-p3:3.1.6c-full)
+docker pull crpi-rs803yb7s70369gn.cn-beijing.personal.cr.aliyuncs.com/merc3dez/mirdeep-p3:3.1.6c-full
 ## Optional: Rename to short name
-docker tag merc3dez/mirdeep-p3:3.1.5a-full mirdeep-p3:3.1.5a-full
+docker tag merc3dez/mirdeep-p3:3.1.6c-full mirdeep-p3:3.1.6c-full
 
 # View help
-docker run --rm mirdeep-p3:3.1.5a-full -h
+docker run --rm mirdeep-p3:3.1.6c-full -h
 # Enter the container interactively (debug/view output)
-docker run --rm -it -v $(pwd):/data mirdeep-p3:3.1.5a /bin/bash
+docker run --rm -it -v $(pwd):/data mirdeep-p3:3.1.6c-full /bin/bash
 ```
 > **Note**:
 > 1. Docker images are hosted at https://hub.docker.com/r/merc3dez/mirdeep-p3/tags or https://cr.console.aliyun.com/repository/cn-beijing/merc3dez/mirdeep-p3/images. Please pull the latest tag.
@@ -502,7 +504,7 @@ All analyses in this repository are reproducible through the following layers:
 | Method | How | File |
 |--------|-----|------|
 | **Conda** | Exact dependency versions frozen after install | `mirdp3_environment.yml` |
-| **Docker** | Fully self-contained image with all dependencies + data | `Dockerfile`, `mirdeep-p3:3.1.4c-full` |
+| **Docker** | Fully self-contained image with all dependencies + data | `Dockerfile`, `mirdeep-p3:3.1.6c-full` |
 | **Version lock** | Tracked in git history; commit `environment.yml` whenever dependencies change | git |
 
 ### 2. Automated testing (CI)
@@ -534,7 +536,7 @@ conda activate mirdp3
   conda list > results/env.txt
   ```
 - Archive inputs, parameters, and outputs together (e.g. `results/` + `logs/`)
-- If you use the Docker image, pin the image tag (e.g. `3.1.4c-full`)
+- If you use the Docker image, pin the image tag (e.g. `3.1.6c-full`)
 - Commit `mirdp3_environment.yml` alongside code changes that alter dependencies
 
 

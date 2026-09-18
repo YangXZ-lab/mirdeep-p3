@@ -22,6 +22,7 @@ conda env create -f mirdp3_environment.yml -n mirdp3
 conda activate mirdp3
 
 # optional: download index data for full E2E test
+# (the Release that hosts data-index.tar.gz is recorded in data-index.env)
 wget https://github.com/YangXZ-lab/mirdeep-p3/releases/download/mirdeep-p3-v3.1.4c-full/data-index.tar.gz
 tar xzf data-index.tar.gz -C data/
 ```

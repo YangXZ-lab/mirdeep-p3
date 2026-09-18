@@ -22,7 +22,14 @@ set -u
 
 # ---- Configuration ----------------------------------------------------------
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RELEASE_TAG="mirdeep-p3-v3.1.4c-full"
+# The Release that hosts data-index.tar.gz is recorded in data-index.env -- a single
+# source of truth shared with the GitHub workflows, so the index can be updated
+# without touching the software version.
+RELEASE_TAG=""
+if [ -f "${ROOT}/data-index.env" ]; then
+    RELEASE_TAG="$(sed -n 's/^DATA_INDEX_RELEASE=//p' "${ROOT}/data-index.env" | head -1 | tr -d '[:space:]')"
+fi
+RELEASE_TAG="${RELEASE_TAG:-mirdeep-p3-v3.1.4c-full}"
 INDEX_URL="https://github.com/YangXZ-lab/mirdeep-p3/releases/download/${RELEASE_TAG}/data-index.tar.gz"
 INPUT_FASTQ="${ROOT}/tests/data/mini.fq"
 GENOME="${ROOT}/tests/data/mini_genome.fasta"

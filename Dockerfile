@@ -1,6 +1,6 @@
 # mirdeep-p3 Docker image
-# Build:  docker build -t mirdeep-p3:3.1.4c .
-# Run:    docker run --rm -v $(pwd):/data mirdeep-p3:3.1.4c mirdeep-p3 -h
+# Build:  docker build -t mirdeep-p3:3.1.6c-full .
+# Run:    docker run --rm -v $(pwd):/data mirdeep-p3:3.1.6c-full mirdeep-p3 -h
 
 FROM continuumio/miniconda3:latest
 

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Image version, e.g. 3.1.5a-full (required when dispatching manually)'
+        description: 'Image version, e.g. 3.1.6c-full (required when dispatching manually)'
         required: false
         default: ''
 
@@ -26,13 +26,13 @@ jobs:
       - uses: actions/checkout@v4
 
       # --- Resolve image version ----
-      # tag push (v3.1.5a-full) -> VERSION=3.1.5a-full (strip leading v)
+      # tag push (v3.1.6c-full) -> VERSION=3.1.6c-full (strip leading v)
       # manual dispatch  -> use the 'version' input (required)
       - name: Resolve image version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ -z "${{ github.event.inputs.version }}" ]; then
-              echo "::error::workflow_dispatch requires the 'version' input (e.g. 3.1.5a-full)"
+              echo "::error::workflow_dispatch requires the 'version' input (e.g. 3.1.6c-full)"
               exit 1
             fi
             VER="${{ github.event.inputs.version }}"
@@ -55,13 +55,18 @@ jobs:
           swap-storage: true
 
       # --- Download data index into build context ----
-      # data/index is not in the git repo; fetch the fixed-URL Release asset so
-      # the image is self-contained ("-full"). URL stays constant across versions.
+      # data/index is not in the git repo; fetch the Release asset recorded in
+      # data-index.env so the image is self-contained ("-full").  That tag is
+      # deliberately independent of the software version: updating the index means
+      # editing data-index.env, not cutting a new software release.
       # gh CLI is pre-authenticated and retries; explicit size check before untar.
       - name: Download data index
         run: |
           mkdir -p data
-          gh release download mirdeep-p3-v3.1.4c-full \
+          DATA_INDEX_RELEASE="$(sed -n 's/^DATA_INDEX_RELEASE=//p' data-index.env | head -1 | tr -d '[:space:]')"
+          test -n "$DATA_INDEX_RELEASE" || { echo "::error::DATA_INDEX_RELEASE is not set in data-index.env"; exit 1; }
+          echo "Downloading data index from release: $DATA_INDEX_RELEASE"
+          gh release download "$DATA_INDEX_RELEASE" \
             --repo "${{ github.repository }}" \
             --pattern data-index.tar.gz \
             --dir data --clobber
