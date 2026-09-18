@@ -748,8 +748,18 @@ Output files:
     predictions_with_pos = calculate_genomic_positions(predictions, precursors, chr_lengths)
     
     if not predictions_with_pos:
-        print("ERROR: No predictions with genomic positions calculated")
-        sys.exit(1)
+        # A legitimate empty outcome, not an error: the warnings above (precursor
+        # not found / chromosome missing from the chr_length file / non-positive
+        # coordinates) can drop every candidate.  Emit empty outputs and exit 0 so
+        # the caller records an empty result instead of failing the sample.
+        print(f"No prediction could be positioned "
+              f"({len(predictions)} parsed, 0 positioned) -- writing empty results")
+        write_predictions([], args.nr_output)
+        write_predictions([], args.filtered_output)
+        if args.bed_output:
+            write_bed_file([], args.bed_output)
+        print(f"Empty results written to: {args.nr_output}, {args.filtered_output}")
+        return
     
     print("3. Removing redundant predictions...")
     non_redundant = remove_redundant_predictions(predictions_with_pos)

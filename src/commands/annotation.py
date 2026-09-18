@@ -21,6 +21,7 @@ from typing import List, Dict, Optional, Tuple
 
 from utils.config import load_config
 from utils.dependencies import check_external_tools
+from utils.shellquote import shq
 from check_python_deps import check_python_deps
 
 DEFAULT_THREADS = 1
@@ -271,8 +272,10 @@ def run_annotation_part1(
 
     merged_bed = temp_dir / f"{group_prefix}-merge_output.bed"
     bedtools_exe = getattr(args, 'bedtools', None) or "bedtools"
-    subprocess.run(f"{bedtools_exe} merge -d 0 -c 4,5,6 -o collapse,distinct,distinct -i {sorted_bed} > {merged_bed}",
-                   shell=True, check=True, stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'))
+    subprocess.run(f"{shq(bedtools_exe)} merge -d 0 -c 4,5,6 -o collapse,distinct,distinct "
+                   f"-i {shq(sorted_bed)} > {shq(merged_bed)}",
+                   shell=True, check=True, stdout=subprocess.DEVNULL,
+                   stderr=open(log_file, 'a'))
 
     nr_pred = temp_dir / f"{group_prefix}-all-mod_fp_prediction-nr"
     subprocess.run([py_exe, str(src_dir / "remove_nr_reads.py"),
@@ -337,7 +340,7 @@ def run_annotation_part1(
                    stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
     
     final_basic_info = output_group_dir / f"{group_prefix}-basic-info"
-    subprocess.run(f"cp {second_basic_info} {final_basic_info}",
+    subprocess.run(f"cp {shq(second_basic_info)} {shq(final_basic_info)}",
                    shell=True, check=True, stdout=subprocess.DEVNULL,
                    stderr=open(log_file, 'a'))
 
@@ -388,12 +391,28 @@ def run_annotation_part2(
     bowtie_exe = getattr(args, 'bowtie', None) or "bowtie"
     aln_files = []
     for folder, fprefix in zip(group_input_folders, group_file_prefixes):
-        candidates = list(folder.rglob("*.processed.fa"))
-        if not candidates:
-            sys.exit(f"No processed.fa found in {folder} or its subdirectories.")
-        proc_fa = candidates[0]
+        # Prefer the exact file for this prefix, then fall back to a recursive
+        # search.  Both spellings are accepted because older identification runs
+        # wrote "<prefix>-processed.fa" instead of the canonical
+        # "<prefix>.processed.fa".
+        proc_fa = None
+        for name in (f"{fprefix}.processed.fa", f"{fprefix}-processed.fa"):
+            cand = folder / name
+            if cand.is_file():
+                proc_fa = cand
+                break
+        if proc_fa is None:
+            candidates = sorted(set(folder.rglob("*.processed.fa")) |
+                                set(folder.rglob("*-processed.fa")))
+            if not candidates:
+                sys.exit(f"No processed FASTA found in {folder} or its subdirectories "
+                         f"(expected '{fprefix}.processed.fa'; the legacy spelling "
+                         f"'{fprefix}-processed.fa' is also accepted).")
+            proc_fa = candidates[0]
         out_aln = temp_dir / f"{fprefix}.mature.aln"
-        subprocess.run(f"{bowtie_exe} -a -v 0 {mature_index} -f {proc_fa} > {out_aln} 2>> {output_group_dir / f'{output_group_dir.name}_annotation.log'}",
+        annotation_log = output_group_dir / f"{output_group_dir.name}_annotation.log"
+        subprocess.run(f"{shq(bowtie_exe)} -a -v 0 {shq(mature_index)} -f {shq(proc_fa)} "
+                       f"> {shq(out_aln)} 2>> {shq(annotation_log)}",
                        shell=True, check=True)
         aln_files.append(out_aln)
 

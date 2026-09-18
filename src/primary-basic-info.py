@@ -181,6 +181,50 @@ def read_filtered_anno(file_path: str) -> Tuple[Dict[str, Dict[str, str]], Dict[
     return conserve, non_conserve
 
 
+STAR_LEN = 21
+
+
+def compute_star(pre_seq: str, mature_seq: str, pre_start: int, pre_end: int,
+                 strand: str) -> Optional[Tuple[str, int, int]]:
+    """
+    Locate the miRNA* (passenger strand) on the precursor.
+
+    ``pre_seq`` is written in transcript (mature) orientation: it is the strand
+    on which ``mature_seq`` is found.  It is therefore co-linear with the
+    genomic coordinates only for the '+' strand.  For the '-' strand it is the
+    reverse complement of that interval, so its 5' end maps to ``pre_end`` and
+    the genomic axis has to be mirrored.
+
+    Coordinates follow the same convention as the input ranges, i.e. the
+    interval covers [start, end) and its length equals ``end - start``.
+
+    Returns:
+        ``(star_seq, star_beg, star_end)``, or ``None`` if ``mature_seq``
+        cannot be placed at either end of the precursor.
+    """
+    pre_len = len(pre_seq)
+    mature_len = len(mature_seq)
+    ind = pre_seq.find(mature_seq)
+    if ind < 0:
+        return None
+
+    at5 = abs(ind) <= 2                              # mature at the precursor 5' end
+    at3 = abs(ind - (pre_len - mature_len)) <= 2     # mature at the precursor 3' end
+    if not (at5 or at3):
+        return None
+
+    # miRNA* occupies the opposite arm of the hairpin
+    star_seq = pre_seq[max(0, pre_len - STAR_LEN):] if at5 else pre_seq[:STAR_LEN]
+    n = len(star_seq)
+
+    # '+' : pre_seq 5' end == pre_start -> star on the precursor 3' arm sits HIGH
+    # '-' : pre_seq 5' end == pre_end   -> star on the precursor 3' arm sits LOW
+    star_at_high = at5 if strand == '+' else (not at5)
+    if star_at_high:
+        return star_seq.upper(), pre_end - n, pre_end
+    return star_seq.upper(), pre_start, pre_start + n
+
+
 def generate_tag(member: int) -> str:
     """
     Generate letter suffix for miRNA member (a,b,c,...,z,aa,ab,...).
@@ -244,26 +288,22 @@ def process_conserved_records(conserve, stem_20, stem_full, chr_lengths,
             stem_20_rec = stem_20.get(name, {'seq': '', 'struc': ''})
             stem_full_rec = stem_full.get(name, {'seq': '', 'struc': ''})
 
-            ind = pre_seq.find(mature_seq)
-            star_seq = ''
-            star_beg = 0
-            star_end = 0
-            if ind >= 0 and abs(ind) <= 2:
-                star_seq = pre_seq[-21:] if len(pre_seq) >= 21 else pre_seq
-                star_beg = max(1, pre_end - 20)
-                star_end = pre_end
-            elif abs(ind - (len(pre_seq) - len(mature_seq) - 1)) <= 2:
-                star_seq = pre_seq[:21] if len(pre_seq) >= 21 else pre_seq
-                star_beg = pre_start + 1
-                star_end = pre_start + 21
-            else:
-                print(f"Warning: Cannot determine star location for {name} (ind={ind}, pre_len={len(pre_seq)}, mature_len={len(mature_seq)}), skipping.", file=sys.stderr)
+            star = compute_star(pre_seq, mature_seq, pre_start, pre_end, strand)
+            if star is None:
+                print(f"Warning: Cannot determine star location for {name} "
+                      f"(mature_len={len(mature_seq)}, pre_len={len(pre_seq)}), skipping.",
+                      file=sys.stderr)
                 member += 1
                 continue
+            star_seq, star_beg, star_end = star
 
-            star_seq = star_seq.upper()
             star_beg = max(1, star_beg)
             star_end = min(chr_lengths.get(chrom, star_end), star_end)
+            if star_beg >= star_end:
+                print(f"Warning: Invalid star range for {name} "
+                      f"({star_beg}..{star_end}), skipping.", file=sys.stderr)
+                member += 1
+                continue
 
             mature_family = family_name.replace('MIR', 'miR')
             miR_id = f"{prefix_miRNA}-{family_name}{tag}"
@@ -350,25 +390,19 @@ def process_non_conserved_records(non_conserve, stem_20, stem_full, chr_lengths,
         stem_20_rec = stem_20.get(name, {'seq': '', 'struc': ''})
         stem_full_rec = stem_full.get(name, {'seq': '', 'struc': ''})
 
-        ind = pre_seq.find(mature_seq)
-        star_seq = ''
-        star_beg = 0
-        star_end = 0
-        if ind != -1 and abs(ind) <= 2:
-            star_seq = pre_seq[-21:] if len(pre_seq) >= 21 else pre_seq
-            star_beg = max(1, pre_end - 20)
-            star_end = pre_end
-        elif ind != -1 and abs(ind - (len(pre_seq) - len(mature_seq) - 1)) <= 2:
-            star_seq = pre_seq[:21] if len(pre_seq) >= 21 else pre_seq
-            star_beg = pre_start + 1
-            star_end = pre_start + 21
-        else:
-            print(f"Warning: Cannot determine star location for non-conserved {name}, skipping.", file=sys.stderr)
+        star = compute_star(pre_seq, mature_seq, pre_start, pre_end, strand)
+        if star is None:
+            print(f"Warning: Cannot determine star location for non-conserved "
+                  f"{name}, skipping.", file=sys.stderr)
             return
+        star_seq, star_beg, star_end = star
 
-        star_seq = star_seq.upper()
         star_beg = max(1, star_beg)
         star_end = min(chr_lengths.get(chrom, star_end), star_end)
+        if star_beg >= star_end:
+            print(f"Warning: Invalid star range for non-conserved {name} "
+                  f"({star_beg}..{star_end}), skipping.", file=sys.stderr)
+            return
 
         mature_family = family_name.replace('MIR', 'miR')
         miR_id = f"{prefix_miRNA}-{family_name}{tag}"
