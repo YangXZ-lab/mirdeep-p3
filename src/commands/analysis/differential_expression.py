@@ -16,6 +16,7 @@ import subprocess
 import shutil
 from pathlib import Path
 from datetime import datetime
+from utils.shellquote import shq
 
 
 def add_arguments(parser: argparse.ArgumentParser):
@@ -176,14 +177,14 @@ def run(args):
 
     # Process RPM
     tmp_exp = temp_dir / f"{rpm_file.stem}-temp{rpm_file.suffix}"
-    cmd = (f"python {extract_script} -i {rpm_file} "
-           f"--case1 {args.case1} --case2 {args.case2} -o {tmp_exp}")
+    cmd = (f"python {shq(extract_script)} -i {shq(rpm_file)} "
+           f"--case1 {args.case1} --case2 {args.case2} -o {shq(tmp_exp)}")
     subprocess.run(cmd, shell=True, check=True)
 
     # Process count
     tmp_count = temp_dir / f"{count_file.stem}-temp{count_file.suffix}"
-    cmd = (f"python {extract_script} -i {count_file} "
-           f"--case1 {args.case1} --case2 {args.case2} -o {tmp_count}")
+    cmd = (f"python {shq(extract_script)} -i {shq(count_file)} "
+           f"--case1 {args.case1} --case2 {args.case2} -o {shq(tmp_count)}")
     subprocess.run(cmd, shell=True, check=True)
 
     # ---- 4b. Expression filter ----
@@ -192,20 +193,22 @@ def run(args):
 
     # ---- 5. PCA ----
     pca_script = scripts_dir / "pca_miRNA.R"
-    cmd = f"Rscript {pca_script} -i {tmp_exp} -r {replicates} -o {output_dir}"
+    cmd = (f"Rscript {shq(pca_script)} -i {shq(tmp_exp)} -r {shq(replicates)} "
+           f"-o {shq(output_dir)}")
     subprocess.run(cmd, shell=True, check=True)
     print("PCA plot generated.")
 
     # ---- 6. Correlation ----
     cor_script = scripts_dir / "correlation_miRNA.R"
-    cmd = f"Rscript {cor_script} -i {tmp_exp} -o {output_dir}"
+    cmd = f"Rscript {shq(cor_script)} -i {shq(tmp_exp)} -o {shq(output_dir)}"
     subprocess.run(cmd, shell=True, check=True)
     print("Correlation plot generated.")
 
     # ---- 7. Differential expression ----
     deg_script = scripts_dir / "miRNA_DEG.R"
-    cmd = (f"Rscript {deg_script} -i {tmp_count} -r {replicates} "
-           f"-o {output_dir} --case1 \"{args.case1name}\" --case2 \"{args.case2name}\"")
+    cmd = (f"Rscript {shq(deg_script)} -i {shq(tmp_count)} -r {shq(replicates)} "
+           f"-o {shq(output_dir)} --case1 {shq(args.case1name)} "
+           f"--case2 {shq(args.case2name)}")
     subprocess.run(cmd, shell=True, check=True)
     print("Differential expression analysis completed.")
 
@@ -218,19 +221,23 @@ def run(args):
             sys.exit(f"DEG result file not found: {deg_result_file}")
         de_mirna_list = temp_dir / "miRNA.list"
         subprocess.run(
-            f"cat {deg_result_file} | sed '1d' | awk '$NF!=\"NOT\"{{ print $1 }}' > {de_mirna_list}",
+            f"cat {shq(deg_result_file)} | sed '1d' | awk '$NF!=\"NOT\"{{ print $1 }}' "
+            f"> {shq(de_mirna_list)}",
             shell=True, check=True
         )
-        cmd = f"Rscript {dotplot_script} -i {tmp_exp} -o {output_dir} -f {de_mirna_list}"
+        cmd = (f"Rscript {shq(dotplot_script)} -i {shq(tmp_exp)} "
+               f"-o {shq(output_dir)} -f {shq(de_mirna_list)}")
     elif args.miRNA:
-        cmd = f"Rscript {dotplot_script} -i {tmp_exp} -o {output_dir} --miRNA \"{args.miRNA}\""
+        cmd = (f"Rscript {shq(dotplot_script)} -i {shq(tmp_exp)} "
+               f"-o {shq(output_dir)} --miRNA {shq(args.miRNA)}")
     elif args.file:
         mir_file = Path(args.file).resolve()
         if not mir_file.is_file():
             sys.exit(f"miRNA list file not found: {mir_file}")
-        cmd = f"Rscript {dotplot_script} -i {tmp_exp} -o {output_dir} -f {mir_file}"
+        cmd = (f"Rscript {shq(dotplot_script)} -i {shq(tmp_exp)} "
+               f"-o {shq(output_dir)} -f {shq(mir_file)}")
     else:
-        cmd = f"Rscript {dotplot_script} -i {tmp_exp} -o {output_dir}"
+        cmd = f"Rscript {shq(dotplot_script)} -i {shq(tmp_exp)} -o {shq(output_dir)}"
 
     subprocess.run(cmd, shell=True, check=True)
     print("Expression dotplot generated.")
@@ -242,8 +249,8 @@ def run(args):
     print(f"Found DEG file: {DEG_file}")
 
     miRNAexp_script = scripts_dir / "miRNA_expression.R"
-    cmd = (f"Rscript {miRNAexp_script} -i {tmp_exp} --deg {DEG_file} "
-           f"-o {output_dir}")
+    cmd = (f"Rscript {shq(miRNAexp_script)} -i {shq(tmp_exp)} --deg {shq(DEG_file)} "
+           f"-o {shq(output_dir)}")
     subprocess.run(cmd, shell=True, check=True)
     print("miRNA expression analysis completed.")
 
@@ -253,17 +260,18 @@ def run(args):
         raise FileNotFoundError(f"No *_res.txt file found in {output_dir}")
     print(f"Found DEG file: {DEG_file}")
 
+    final_expr = output_dir / "final_miRNA_expression.txt"
     cmd_header = (
-        f"printf 'miRNA\\t' > {output_dir}/final_miRNA_expression.txt; "
-        f"head -1 {DEG_file} | cut -f2- | tr '\\n' '\\t' >> {output_dir}/final_miRNA_expression.txt; "
-        f"head -1 {tmp_exp} | cut -f2- >> {output_dir}/final_miRNA_expression.txt"
+        f"printf 'miRNA\\t' > {shq(final_expr)}; "
+        f"head -1 {shq(DEG_file)} | cut -f2- | tr '\\n' '\\t' >> {shq(final_expr)}; "
+        f"head -1 {shq(tmp_exp)} | cut -f2- >> {shq(final_expr)}"
     )
     subprocess.run(cmd_header, shell=True, check=True, executable='/bin/bash')
 
     cmd_join = (
         f"join -t $'\\t' -1 1 -2 1 "
-        f"<(tail -n +2 {DEG_file} | sort -k1,1) "
-        f"<(tail -n +2 {tmp_exp} | sort -k1,1) >> {output_dir}/final_miRNA_expression.txt"
+        f"<(tail -n +2 {shq(DEG_file)} | sort -k1,1) "
+        f"<(tail -n +2 {shq(tmp_exp)} | sort -k1,1) >> {shq(final_expr)}"
     )
     subprocess.run(cmd_join, shell=True, check=True, executable='/bin/bash')
     print(f"Final file created: {output_dir}/final_miRNA_expression.txt")

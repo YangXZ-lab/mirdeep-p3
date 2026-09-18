@@ -27,6 +27,15 @@ import sys
 import subprocess
 import shutil
 
+# Exit-code convention shared with enrich_analysis.R and the callers
+# (functional_analysis.py / onestep.py):
+#   0 success | 1 failure | 2 PARTIAL_SUCCESS (some sub-tasks failed)
+EXIT_OK, EXIT_FAILURE, EXIT_PARTIAL = 0, 1, 2
+
+# Exit code emitted by enrich_analysis.R when it ran fine but found no
+# significant KEGG/GO term -- a legitimate empty result, not a failure.
+R_NO_TERMS = 3
+
 
 def parse_args():
     """Parse command-line arguments."""
@@ -119,7 +128,10 @@ def main():
     temp_dir = os.path.join(args.output, "temp")
     os.makedirs(temp_dir, exist_ok=True)
 
-    # Process each miRNA
+    # Process each miRNA, recording the outcome of every single task instead of
+    # only printing the failure: a partly failed run must not exit 0.
+    results = []          # (mirna, short, status, detail)
+
     for mirna, genes in mirna_genes.items():
         short = get_short_name(mirna)
         print(f"\n>>> Processing {mirna} (short: {short})")
@@ -145,11 +157,26 @@ def main():
         print(f"Running: {' '.join(cmd)}")
 
         try:
-            subprocess.run(cmd, check=True)
-            print(f"Enrichment analysis finished for {mirna}; results in {mirna_out}")
-        except subprocess.CalledProcessError as e:
-            print(f"Error: enrich_analysis.R failed for {mirna} (code {e.returncode})")
-            # Continue with remaining miRNAs
+            rc = subprocess.run(cmd).returncode
+        except OSError as e:
+            # e.g. Rscript not on PATH -- record it, do not abort the batch
+            rc = EXIT_FAILURE
+            print(f"Error: could not run enrich_analysis.R for {mirna}: {e}",
+                  file=sys.stderr)
+
+        if rc == EXIT_OK:
+            status, detail = "ok", f"results in {mirna_out}"
+            print(f"Enrichment analysis finished for {mirna}; {detail}")
+        elif rc == R_NO_TERMS:
+            status = "no_terms"
+            detail = "no significant terms for this gene list"
+            print(f"Note: enrich_analysis.R found no significant terms for {mirna} "
+                  f"(exit {rc}) -- empty result, not a failure")
+        else:
+            status, detail = "failed", f"enrich_analysis.R exit code {rc}"
+            print(f"Error: enrich_analysis.R failed for {mirna} (code {rc})")
+
+        results.append((mirna, short, status, detail))
 
     # Cleanup temporary files
     print("\nCleaning up temporary files...")
@@ -160,8 +187,35 @@ def main():
         print(f"Warning: could not delete temp directory {temp_dir}: {e}",
               file=sys.stderr)
 
-    print("All miRNA enrichment tasks completed.")
+    # ---- Aggregate every sub-task exit code into one explicit verdict ----
+    ok       = [r for r in results if r[2] == "ok"]
+    no_terms = [r for r in results if r[2] == "no_terms"]
+    failed   = [r for r in results if r[2] == "failed"]
+
+    print("\n" + "=" * 72)
+    print(f"miRNA enrichment summary: {len(results)} task(s) -- "
+          f"{len(ok)} ok, {len(no_terms)} no significant terms, {len(failed)} failed")
+    for mirna, short, status, detail in results:
+        print(f"   {status.upper():<9} {mirna:<16} ({short})  {detail}")
+    if no_terms:
+        print("Note: 'no significant terms' is an empty result, not a failure -- it "
+              "usually means too few of these genes carry GO/KEGG annotation; check "
+              "the OrgDb mappings for these gene IDs before treating it as a bug.")
+    print("=" * 72)
+
+    if failed and len(failed) == len(results):
+        print("STATUS: FAILURE -- every miRNA enrichment task failed; no results "
+              "were produced.")
+        return EXIT_FAILURE
+    if failed:
+        print(f"STATUS: PARTIAL_SUCCESS -- {len(failed)} of {len(results)} miRNA "
+              f"task(s) failed; the other {len(ok) + len(no_terms)} finished. "
+              f"Enrichment output is INCOMPLETE for: "
+              f"{', '.join(r[0] for r in failed)}")
+        return EXIT_PARTIAL
+    print("STATUS: SUCCESS -- all miRNA enrichment tasks completed.")
+    return EXIT_OK
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

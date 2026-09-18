@@ -83,10 +83,41 @@ mir2genes   <- split(mir_gene$gene, mir_gene$miRNA)
 all_genes   <- unique(mir_gene$gene)
 message(sprintf("miRNAs: %d  |  unique target genes: %d", length(mirna_list), length(all_genes)))
 
-# ---- 2. Install and load OrgDb ---------------------------------------------
-message("Installing OrgDb: ", orgdb_dir)
-install.packages(orgdb_dir, repos = NULL, type = "source")
-library(org.Morg.eg.db)
+# ---- Install and load the local OrgDb (job-local library) --------------------
+# The OrgDb is rebuilt on every run, so it must NOT go into the shared conda R
+# library: concurrent jobs would deadlock on 00LOCK-* and the base environment
+# would be polluted.  MIRDEEP_R_LIB is exported by the Python driver; when this
+# script is run standalone we fall back to <output_dir>/Rlib.
+orgdb_pkg <- "org.Morg.eg.db"
+job_lib   <- Sys.getenv("MIRDEEP_R_LIB", unset = "")
+if (!nzchar(job_lib)) job_lib <- file.path(output_dir, "Rlib")
+dir.create(job_lib, recursive = TRUE, showWarnings = FALSE)
+.libPaths(c(job_lib, .libPaths()))
+message("Job-local R library: ", job_lib)
+
+stale_lock <- file.path(job_lib, paste0("00LOCK-", orgdb_pkg))
+if (dir.exists(stale_lock)) {
+  message("Removing stale lock: ", stale_lock)
+  unlink(stale_lock, recursive = TRUE, force = TRUE)
+}
+
+# NOTE: check the JOB library only.  requireNamespace() would also see a stale
+# org.Morg.eg.db left in the shared conda library, silently skip the install and
+# then analyse with out-of-date annotations.
+job_lib_pkgs <- rownames(installed.packages(lib.loc = job_lib))
+if (!(orgdb_pkg %in% job_lib_pkgs)) {
+  message("Installing OrgDb from: ", orgdb_dir)
+  install.packages(orgdb_dir, repos = NULL, type = "source", lib = job_lib)
+  job_lib_pkgs <- rownames(installed.packages(lib.loc = job_lib))
+  if (!(orgdb_pkg %in% job_lib_pkgs)) {
+    stop("Failed to install ", orgdb_pkg, " into ", job_lib,
+         " - check the install output above")
+  }
+} else {
+  message("OrgDb already present in ", job_lib, " - skipping installation")
+}
+suppressPackageStartupMessages(library(org.Morg.eg.db))
+
 
 # ---- 3. KEGG annotation files ----------------------------------------------
 pathway2gene_file <- file.path(annotation_dir, "pathway2gene")

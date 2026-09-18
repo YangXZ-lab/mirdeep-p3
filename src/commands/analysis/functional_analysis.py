@@ -17,6 +17,7 @@ from pathlib import Path
 from datetime import datetime
 
 from utils.dependencies import check_external_tools
+from utils.shellquote import shq
 
 
 def add_arguments(parser: argparse.ArgumentParser):
@@ -46,6 +47,28 @@ def add_arguments(parser: argparse.ArgumentParser):
                         help="Output directory (default: mirdeep-functional_analysis-<timestamp>)")
     parser.add_argument("--chord", action="store_true",
                         help="Generate chord diagram (only with --target)")
+
+
+def run_enrichment_step(cmd: str, label: str) -> str:
+    """
+    Run one enrichment command and classify its outcome.
+
+    Returns 'ok', 'partial' or 'no_terms'; raises RuntimeError on a real failure.
+    The status codes are the ones documented in scripts/miRNA_enrich_analysis.py:
+    0 ok, 2 PARTIAL_SUCCESS, 3 NO_TERMS (empty result), anything else = failure.
+    """
+    rc = subprocess.run(cmd, shell=True).returncode
+    if rc == 0:
+        return "ok"
+    if rc == 2:
+        print(f"[warn] {label}: PARTIAL_SUCCESS -- some sub-tasks failed; "
+              f"the enrichment output is incomplete (see the summary above).")
+        return "partial"
+    if rc == 3:
+        print(f"[note] {label}: no significant enrichment terms were found "
+              f"(empty result, not an error).")
+        return "no_terms"
+    raise RuntimeError(f"{label} failed (exit {rc}); see the output above")
 
 
 def run(args):
@@ -79,6 +102,14 @@ def run(args):
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Job-local R library for the freshly built OrgDb (mirrors onestep.py so a
+    # standalone Functional_analysis run behaves the same way).  setdefault keeps
+    # whatever the parent driver already exported.
+    r_lib = output_dir / "Rlib"
+    r_lib.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("MIRDEEP_R_LIB", str(r_lib))
+    print(f"[functional_analysis] Using R library: {os.environ['MIRDEEP_R_LIB']}")
+
     # ---- 3. Build orgdb if requested ----
     if build_orgdb:
         # Check external tools: emapper.py, Rscript
@@ -93,7 +124,7 @@ def run(args):
         # ---- 3a. Preprocess protein FASTA: remove periods from sequences ----
         protein_clean = output_dir / f"{protein_fasta.stem}.clean{protein_fasta.suffix}"
         print(f"Cleaning protein sequences (removing '.') to {protein_clean} ...")
-        cmd = f"sed '/^>/! s/\\.//g' {protein_fasta} > {protein_clean}"
+        cmd = f"sed '/^>/! s/\\.//g' {shq(protein_fasta)} > {shq(protein_clean)}"
         subprocess.run(cmd, shell=True, check=True)
         if not protein_clean.is_file() or protein_clean.stat().st_size == 0:
             sys.exit(f"Error: cleaned protein file was not created or is empty: {protein_clean}")
@@ -112,29 +143,30 @@ def run(args):
             eggnog_data = Path(args.EGGNOG_DATA_DIR)
             if not eggnog_data.is_dir():
                 sys.exit(f"EGGNOG_DATA_DIR not found: {eggnog_data}")
-            cmd = (f"emapper.py --data_dir {eggnog_data} --cpu {args.threads} "
+            cmd = (f"emapper.py --data_dir {shq(eggnog_data)} --cpu {args.threads} "
                    f"-m diamond --override --dbmem "
-                   f"-d euk --tax_scope Viridiplantae -i {protein_clean} "
-                   f"-o {emapper_output_base}")
+                   f"-d euk --tax_scope Viridiplantae -i {shq(protein_clean)} "
+                   f"-o {shq(emapper_output_base)}")
         else:
             cmd = (f"emapper.py --cpu {args.threads} -m diamond --override --dbmem "
-                   f"-d euk --tax_scope Viridiplantae -i {protein_clean} "
-                   f"-o {emapper_output_base}")
+                   f"-d euk --tax_scope Viridiplantae -i {shq(protein_clean)} "
+                   f"-o {shq(emapper_output_base)}")
         subprocess.run(cmd, shell=True, check=True)
 
         # ---- 3c. Process eggNOG outputs ----
         eggnog_annot = emapper_output_base.with_name(emapper_output_base.name + ".emapper.annotations")
         go_annot = emapper_output_base / "Go.eggnog.emapper.annotations"
         subprocess.run(
-            f"sed '/^##/d' {eggnog_annot} | sed 's/#//g' | "
-            f"awk -vFS='\\t' -vOFS='\\t' '{{print $1,$9,$10,$12}}' > {go_annot}",
+            f"sed '/^##/d' {shq(eggnog_annot)} | sed 's/#//g' | "
+            f"awk -vFS='\\t' -vOFS='\\t' '{{print $1,$9,$10,$12}}' > {shq(go_annot)}",
             shell=True, check=True
         )
 
         # ---- 3d. Build OrgDb and pathway files ----
         build_script = scripts_dir / "build_orgdb.R"
         orgdb_outdir = emapper_output_base
-        cmd = (f"Rscript {build_script} -i {go_annot} --kojson {kojson_file} -o {orgdb_outdir}")
+        cmd = (f"Rscript {shq(build_script)} -i {shq(go_annot)} "
+               f"--kojson {shq(kojson_file)} -o {shq(orgdb_outdir)}")
         subprocess.run(cmd, shell=True, check=True)
 
         # After building, set orgdb and file_paths for later use
@@ -156,28 +188,33 @@ def run(args):
         gene_file = Path(args.gene)
         if not gene_file.is_file():
             sys.exit(f"Gene file not found: {gene_file}")
-        subprocess.run(
-            f"Rscript {enrich_script} -i {orgdb_path} -f {pathway_dir} "
-            f"-g {gene_file} --goterm 10 -o {output_dir}",
-            shell=True, check=True
-        )
+        step_status = run_enrichment_step(
+            f"Rscript {shq(enrich_script)} -i {shq(orgdb_path)} -f {shq(pathway_dir)} "
+            f"-g {shq(gene_file)} --goterm 10 -o {shq(output_dir)}",
+            "GO/KEGG enrichment (gene list)")
     else:
         # miRNA-target based enrichment
         target_file = Path(args.target)
         if not target_file.is_file():
             sys.exit(f"Target file not found: {target_file}")
         enrich_script = scripts_dir / "miRNA_enrich_analysis.py"
-        cmd = (f"python {enrich_script} -i {target_file} --orgdb {orgdb_path} "
-               f"-f {pathway_dir} -o {output_dir}")
-        subprocess.run(cmd, shell=True, check=True)
+        cmd = (f"python {shq(enrich_script)} -i {shq(target_file)} "
+               f"--orgdb {shq(orgdb_path)} -f {shq(pathway_dir)} -o {shq(output_dir)}")
+        step_status = run_enrichment_step(cmd, "miRNA target enrichment")
 
         # Optional chord diagram
         if args.chord:
             chord_script = scripts_dir / "miRNA_chord_type2.R"
             subprocess.run(
-                f"Rscript {chord_script} -i {target_file} --orgdb {orgdb_path} "
-                f"-f {pathway_dir} -o {output_dir}",
+                f"Rscript {shq(chord_script)} -i {shq(target_file)} "
+                f"--orgdb {shq(orgdb_path)} -f {shq(pathway_dir)} -o {shq(output_dir)}",
                 shell=True, check=True
             )
+
+    if step_status == "partial":
+        print(f"\nFunctional analysis finished with PARTIAL_SUCCESS: every step ran, "
+              f"but some enrichment sub-tasks failed, so the enrichment output is "
+              f"INCOMPLETE. Results in {output_dir}")
+        sys.exit(2)
 
     print(f"\nFunctional analysis completed. Results in {output_dir}")

@@ -13,6 +13,7 @@ import sys
 import subprocess
 from pathlib import Path
 from datetime import datetime
+from utils.shellquote import shq
 
 def add_arguments(parser: argparse.ArgumentParser):
     """Define Stat-specific arguments."""
@@ -48,7 +49,7 @@ def run(args):
 
     # ---- Step 1: basic statistics ----
     basic_stat_script = scripts_dir / "basic_stat.R"
-    cmd = f"Rscript {basic_stat_script} -i {input_file} -o {output_dir}"
+    cmd = f"Rscript {shq(basic_stat_script)} -i {shq(input_file)} -o {shq(output_dir)}"
     subprocess.run(cmd, shell=True, check=True)
     print("Basic statistics generated.")
 
@@ -56,10 +57,10 @@ def run(args):
     if args.rnaplot:
         rna_plot_script = scripts_dir / "RNA_plot.py"
         if args.list:
-            cmd = (f"python {rna_plot_script} -i {input_file} -o {output_dir} "
-                   f"--list \"{args.list}\"")
+            cmd = (f"python {shq(rna_plot_script)} -i {shq(input_file)} "
+                   f"-o {shq(output_dir)} --list {shq(args.list)}")
         else:
-            cmd = f"python {rna_plot_script} -i {input_file} -o {output_dir}"
+            cmd = f"python {shq(rna_plot_script)} -i {shq(input_file)} -o {shq(output_dir)}"
         subprocess.run(cmd, shell=True, check=True)
         print("RNA structure plots generated.")
 

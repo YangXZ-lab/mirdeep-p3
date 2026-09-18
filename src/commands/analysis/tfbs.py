@@ -16,6 +16,7 @@ from pathlib import Path
 from datetime import datetime
 
 from utils.dependencies import check_external_tools
+from utils.shellquote import shq
 
 
 def add_arguments(parser: argparse.ArgumentParser):
@@ -99,7 +100,9 @@ def run(args):
                 if not bf.is_file():
                     sys.exit(f"Basic-info file not found: {bf}")
                 subprocess.run(
-                    f"cat {bf} | awk '{{ print $5\"\\t\"$7\"\\t\"$8\"\\t\"$1\"\\t\"$2\"\\t\"$6 }}' >> {input_bed}",
+                    f"cat {shq(bf)} | "
+                    f"awk '{{ print $5\"\\t\"$7\"\\t\"$8\"\\t\"$1\"\\t\"$2\"\\t\"$6 }}' "
+                    f">> {shq(input_bed)}",
                     shell=True, check=True
                 )
     else:
@@ -111,8 +114,8 @@ def run(args):
     # ---- Step 2: Upstream extraction ----
     upstream_bed = temp_dir / "tfbs_input.upstream.bed"
     get_upstream_script = project_root / "scripts" / "get_upstream.py"
-    cmd = (f"python {get_upstream_script} -u {args.upstream} "
-           f"-o {upstream_bed} {input_bed} {args.fai}")
+    cmd = (f"python {shq(get_upstream_script)} -u {args.upstream} "
+           f"-o {shq(upstream_bed)} {shq(input_bed)} {shq(args.fai)}")
     subprocess.run(cmd, shell=True, check=True)
 
     # ---- Step 3: Get fasta sequences ----
@@ -121,8 +124,8 @@ def run(args):
     if not genome_file.is_file():
         sys.exit(f"Genome file not found: {genome_file}")
     subprocess.run(
-        f"bedtools getfasta -s -nameOnly -bed {upstream_bed} "
-        f"-fi {genome_file} -fo {upstream_fa}",
+        f"bedtools getfasta -s -nameOnly -bed {shq(upstream_bed)} "
+        f"-fi {shq(genome_file)} -fo {shq(upstream_fa)}",
         shell=True, check=True
     )
 
@@ -162,8 +165,8 @@ def run(args):
     log_file = output_dir / "tfbs.log"
     with open(log_file, 'w') as log_fh:
         subprocess.run(
-            f"fimo --max-strand --bgfile {bg_file} --thresh {args.evalue} "
-            f"-oc {fimo_out} {meme_file} {upstream_fa}",
+            f"fimo --max-strand --bgfile {shq(bg_file)} --thresh {args.evalue} "
+            f"-oc {shq(fimo_out)} {shq(meme_file)} {shq(upstream_fa)}",
             shell=True, check=True, stdout=log_fh, stderr=subprocess.STDOUT
         )
 
@@ -171,9 +174,10 @@ def run(args):
     tfbs_output = output_dir / "tfbs.tsv"
     subprocess.run(
         f"awk 'NR==FNR {{a[$2]=$3;next}} {{if($1 in a){{ print $0\"\\t\"a[$1] }}}}' "
-        f"{tf_list_file} {fimo_out}/fimo.tsv | "
+        f"{shq(tf_list_file)} {shq(fimo_out)}/fimo.tsv | "
         f"awk '{{ print $1\"\\t\"$NF\"\\t\"$3\"\\t\"$4\"-\"$5\"\\t\"$6\"\\t\"$8\"\\t\"$9\"\\t\"$10 }}' | "
-        f"awk 'BEGIN{{FS=OFS=\"\\t\"}} {{gsub(/\\([+-]\\)/,\"\",$3); print}}' > {tfbs_output}",
+        f"awk 'BEGIN{{FS=OFS=\"\\t\"}} {{gsub(/\\([+-]\\)/,\"\",$3); print}}' "
+        f"> {shq(tfbs_output)}",
         shell=True, check=True
     )
 
@@ -184,7 +188,8 @@ def run(args):
             print("Warning: Rscript not found, skipping picture generation.")
         else:
             subprocess.run(
-                f"Rscript {rscript_script} -i {tfbs_output} -o {output_dir}",
+                f"Rscript {shq(rscript_script)} -i {shq(tfbs_output)} "
+                f"-o {shq(output_dir)}",
                 shell=True, check=True
             )
 

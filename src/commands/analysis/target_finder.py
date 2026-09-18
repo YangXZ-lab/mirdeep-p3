@@ -16,6 +16,7 @@ from pathlib import Path
 from datetime import datetime
 
 from utils.dependencies import check_external_tools
+from utils.shellquote import shq
 
 
 def add_arguments(parser: argparse.ArgumentParser):
@@ -62,7 +63,8 @@ def run(args):
             sys.exit(f"Basic-info file not found: {basic_info_file}")
         mature_fa = temp_dir / "mature.fa"
         # Extract mature sequences: column 1 (ID) and column 18 (sequence)
-        cmd = f"cat {basic_info_file} | awk '{{ print \">\"$1\"\\n\"$18 }}' > {mature_fa}"
+        cmd = (f"cat {shq(basic_info_file)} | "
+               f"awk '{{ print \">\"$1\"\\n\"$18 }}' > {shq(mature_fa)}")
         subprocess.run(cmd, shell=True, check=True)
         print(f"Extracted mature sequences from {basic_info_file} into {mature_fa}")
     else:
@@ -80,7 +82,8 @@ def run(args):
 
     # ---- Step 1: Reverse complement ----
     rp_fa = temp_dir / "mature.rp.fa"
-    subprocess.run(f"seqkit seq {mature_fa} -r -p > {rp_fa}", shell=True, check=True)
+    subprocess.run(f"seqkit seq {shq(mature_fa)} -r -p > {shq(rp_fa)}",
+                   shell=True, check=True)
 
     # ---- Step 2: Forward and reverse alignments ----
     cds_fa = Path(args.cds).resolve()
@@ -93,42 +96,50 @@ def run(args):
 
     # Forward alignment
     forw_aln = temp_dir / "forward_alignment"
-    subprocess.run(f"ssearch36 {ssearch_opts} {mature_fa} {cds_fa} > {forw_aln}",
+    subprocess.run(f"ssearch36 {ssearch_opts} {shq(mature_fa)} {shq(cds_fa)} "
+                   f"> {shq(forw_aln)}",
                    shell=True, check=True)
 
     # Reverse alignment
     rev_aln = temp_dir / "reverse_alignment"
-    subprocess.run(f"ssearch36 {ssearch_opts} {rp_fa} {cds_fa} > {rev_aln}",
+    subprocess.run(f"ssearch36 {ssearch_opts} {shq(rp_fa)} {shq(cds_fa)} "
+                   f"> {shq(rev_aln)}",
                    shell=True, check=True)
 
     # ---- Step 3: Parse alignments to TSV ----
     parse_script = scripts_dir / "parse_ssearch.py"
     forw_tsv = temp_dir / "forward_alignment.tsv"
     rev_tsv = temp_dir / "reverse_alignment.tsv"
-    subprocess.run(f"python {parse_script} -i {forw_aln} > {forw_tsv}", shell=True, check=True)
-    subprocess.run(f"python {parse_script} -i {rev_aln} > {rev_tsv}", shell=True, check=True)
+    subprocess.run(f"python {shq(parse_script)} -i {shq(forw_aln)} > {shq(forw_tsv)}",
+                   shell=True, check=True)
+    subprocess.run(f"python {shq(parse_script)} -i {shq(rev_aln)} > {shq(rev_tsv)}",
+                   shell=True, check=True)
     total_tsv = temp_dir / "total.tsv"
-    subprocess.run(f"cat {forw_tsv} {rev_tsv} > {total_tsv}", shell=True, check=True)
+    subprocess.run(f"cat {shq(forw_tsv)} {shq(rev_tsv)} > {shq(total_tsv)}",
+                   shell=True, check=True)
 
     # ---- Step 4: Statistical filtering ----
     parse_targets_script = mi_rna_target_dir / "parse_mirna_targets.py"
     raw_target = temp_dir / "target_finder_raw.tsv"
-    cmd = (f"python {parse_targets_script} -i {total_tsv} "
-           f"--E_cutoff {args.evalue} --GUs_cutoff {args.GUs} > {raw_target}")
+    cmd = (f"python {shq(parse_targets_script)} -i {shq(total_tsv)} "
+           f"--E_cutoff {args.evalue} --GUs_cutoff {args.GUs} > {shq(raw_target)}")
     subprocess.run(cmd, shell=True, check=True)
 
     # Get mature length
     mature_len = temp_dir / "mature.length"
-    subprocess.run(f"seqkit fx2tab --length --name --header-line {mature_fa} | grep -v '#' > {mature_len}",
+    subprocess.run(f"seqkit fx2tab --length --name --header-line {shq(mature_fa)} | "
+                   f"grep -v '#' > {shq(mature_len)}",
                    shell=True, check=True)
 
     # Final filtered output
     final_output = output_dir / "target_finder.tsv"
     subprocess.run(
-        f"cat {raw_target} | grep -v '#' | "
-        f"awk 'NR==FNR {{a[$1]=$2;next}} {{if($1 in a){{ print $0\"\\t\"a[$1] }}}}' {mature_len} - | "
+        f"cat {shq(raw_target)} | grep -v '#' | "
+        f"awk 'NR==FNR {{a[$1]=$2;next}} {{if($1 in a){{ print $0\"\\t\"a[$1] }}}}' "
+        f"{shq(mature_len)} - | "
         f"awk '{{if($(NF-6)>=($NF-1)){{ print $0 }}}}' | "
-        f"awk -F \"\\t\" '{{ print $1\"\\t\"$2\"\\t\"$NF\"\\t\"$8\"\\t\"($8+$NF-1)\"\\t\"$(NF-2) }}' > {final_output}",
+        f"awk -F \"\\t\" '{{ print $1\"\\t\"$2\"\\t\"$NF\"\\t\"$8\"\\t\"($8+$NF-1)\"\\t\"$(NF-2) }}' "
+        f"> {shq(final_output)}",
         shell=True, check=True)
 
     # ---- Step 5: Clean temp ----

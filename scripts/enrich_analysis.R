@@ -15,6 +15,11 @@
 #       - GO DAG plot (GO_dag.pdf/png/svg)
 #       - GO results Excel file (ego_list.xlsx)
 #
+# Exit codes:
+#   0 = enrichment results were produced
+#   3 = ran successfully but no significant KEGG/GO term was found (empty result)
+#   1 = error
+#
 # Usage:
 #   Rscript enrich_analysis.R -i <orgdb_dir> -f <annotation_dir> -o <output_dir> -g <gene_file>
 #                             [--kegg_pvalue <p>] [--kegg_qvalue <q>]
@@ -105,10 +110,41 @@ goterm         <- ifelse(is.null(opt$goterm), Inf, opt$goterm)   # Inf means all
 # ---- Create output directory ----
 dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-# ---- 1. Install and load the local OrgDb ----
-message("Installing OrgDb from: ", orgdb_dir)
-install.packages(orgdb_dir, repos = NULL, type = "source")
-library(org.Morg.eg.db)
+# ---- Install and load the local OrgDb (job-local library) --------------------
+# The OrgDb is rebuilt on every run, so it must NOT go into the shared conda R
+# library: concurrent jobs would deadlock on 00LOCK-* and the base environment
+# would be polluted.  MIRDEEP_R_LIB is exported by the Python driver; when this
+# script is run standalone we fall back to <output_dir>/Rlib.
+orgdb_pkg <- "org.Morg.eg.db"
+job_lib   <- Sys.getenv("MIRDEEP_R_LIB", unset = "")
+if (!nzchar(job_lib)) job_lib <- file.path(output_dir, "Rlib")
+dir.create(job_lib, recursive = TRUE, showWarnings = FALSE)
+.libPaths(c(job_lib, .libPaths()))
+message("Job-local R library: ", job_lib)
+
+stale_lock <- file.path(job_lib, paste0("00LOCK-", orgdb_pkg))
+if (dir.exists(stale_lock)) {
+  message("Removing stale lock: ", stale_lock)
+  unlink(stale_lock, recursive = TRUE, force = TRUE)
+}
+
+# NOTE: check the JOB library only.  requireNamespace() would also see a stale
+# org.Morg.eg.db left in the shared conda library, silently skip the install and
+# then analyse with out-of-date annotations.
+job_lib_pkgs <- rownames(installed.packages(lib.loc = job_lib))
+if (!(orgdb_pkg %in% job_lib_pkgs)) {
+  message("Installing OrgDb from: ", orgdb_dir)
+  install.packages(orgdb_dir, repos = NULL, type = "source", lib = job_lib)
+  job_lib_pkgs <- rownames(installed.packages(lib.loc = job_lib))
+  if (!(orgdb_pkg %in% job_lib_pkgs)) {
+    stop("Failed to install ", orgdb_pkg, " into ", job_lib,
+         " - check the install output above")
+  }
+} else {
+  message("OrgDb already present in ", job_lib, " - skipping installation")
+}
+suppressPackageStartupMessages(library(org.Morg.eg.db))
+
 
 # ---- 2. Read pathway annotation files (for KEGG) ----
 pathway2gene_file <- file.path(annotation_dir, "pathway2gene")
@@ -140,7 +176,7 @@ ekp <- enricher(gene_list,
                 maxGSSize     = 5000)
 
 # ---- 5. KEGG dotplot ----
-if (nrow(ekp) > 0) {
+if (!is.null(ekp) && nrow(ekp) > 0) {
   kegg_plot <- dotplot(ekp) +
     theme_bw(base_size = 12) +
     scale_color_gradient(low = "blue", high = "red") +
@@ -170,12 +206,21 @@ ego_list <- lapply(gene_list_GO, function(x) {
            maxGSSize     = 2500)
 })
 
-ego_result_list <- lapply(ego_list, function(x) x@result)
+# enrichGO() returns NULL when none of the genes could be mapped to a GO term.
+# That is an empty result, not an error: guard it instead of dereferencing NULL
+# with `x@result`, which aborted the whole script with exit code 1.
+ego_valid <- ego_list[!vapply(ego_list, is.null, logical(1))]
 
 # ---- 7. Export GO results to Excel ----
 excel_path <- file.path(output_dir, "ego_list.xlsx")
-write.xlsx(ego_result_list, file = excel_path, rowNames = FALSE)
-message("GO results saved to ", excel_path)
+if (length(ego_valid) > 0) {
+  ego_result_list <- lapply(ego_valid, function(x) x@result)
+  write.xlsx(ego_result_list, file = excel_path, rowNames = FALSE)
+  message("GO results saved to ", excel_path)
+} else {
+  message("No GO enrichment result to export (no gene mapped to a GO term) - ",
+          "skipping ", excel_path)
+}
 
 # ---- 8. GO dotplot (for the first element, if significant) ----
 ego_first <- ego_list[[1]]
@@ -256,5 +301,21 @@ if (!is.null(ego_first) && nrow(ego_first) > 0) {
 # } else {
 #   message("GO enrichment results empty, skipping DAG plot.")
 # }
+
+# ---- 11. Report the outcome through the exit code ----------------------------
+# Exit codes: 0 = produced results, 3 = ran fine but nothing significant,
+#             1 = error (stop() above).
+n_kegg_terms <- if (is.null(ekp)) 0L else nrow(ekp)
+n_go_terms   <- sum(vapply(ego_list, function(x) if (is.null(x)) 0L else nrow(x),
+                           integer(1)))
+
+message("Enrichment finished: ", n_kegg_terms, " KEGG term(s), ",
+        n_go_terms, " GO term(s).")
+
+if (n_kegg_terms == 0L && n_go_terms == 0L) {
+  message("No significant KEGG or GO terms found for this gene list - ",
+          "this is an empty result, not an error (exit code 3).")
+  quit(save = "no", status = 3)
+}
 
 message("All enrichment analyses completed. Results are in: ", output_dir)
