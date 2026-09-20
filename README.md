@@ -285,6 +285,16 @@ mirdeep-p3 analysis Target_finder \
   -o <output_dir> \
   -t <threads>
 ```
+The command above runs the built-in psRNATarget-compatible engine, the default since
+3.1.7b (no ssearch36 / seqkit required). The historical ssearch36 engine is still
+available:
+```bash
+mirdeep-p3 analysis Target_finder --engine ssearch \
+  -i <mature_miRNA.fasta> \
+  -c <cds.fasta> \
+  -o <output_dir> \
+  -t <threads>
+```
 | Parameter | Description | Example |
 |---|---|---|
 | `-i, --input` | miRNA mature sequences (fasta). | `[e.g., sample-mature.fasta]` |
@@ -292,16 +302,22 @@ mirdeep-p3 analysis Target_finder \
 | `-t, --threads` | Number of threads used in mirdeep-p3 (optional, default: 1). | `[e.g., 20]` |
 | `-b, --basic` | Result of annotation step (basic info file, conflict with `-i`). | `[e.g., sample-basic-info]` |
 | `-e, --evalue` | E-value threshold for target prediction (optional, default: 2.5). | `[e.g., 30]` |
-| `--GUs` | Allowed G:U mismatches in the complementary region (optional, default: 1). | `[e.g., 0.5]` |
+| `--GUs` | Allowed G:U mismatches in the complementary region (optional, default: 1; `--engine ssearch` only). | `[e.g., 0.5]` |
+| `--engine` | Alignment engine (optional, default: psrna). `psrna`: built-in psRNATarget-compatible scanner, no ssearch36 needed. `ssearch`: ssearch36 + MiRNATarget parser, the historical path. | `[e.g., ssearch]` |
+| `--allow-gap / --no-allow-gap` | `--engine psrna` only: whether to report sites carrying a single-base indel (optional, default: on). `--no-allow-gap` restricts the output to indel-free sites. | `[e.g., --no-allow-gap]` |
+| `--psrna-detail` | `--engine psrna` only: also write the native 14-column psRNATarget table (optional). | `[e.g., --psrna-detail]` |
+| `--max-hsp` | `--engine ssearch` only: ssearch36 `-b` value, i.e. the maximum number of HSPs reported per miRNA (optional, default: 200). | `[e.g., 2000]` |
 
 | Path | Description |
 |---|---|
-| `output/target_finder.tsv` | miRNA target identification results. |
+| `output/target_finder.tsv` | miRNA target identification results, 6 columns: miRNA, target, mature length, target start, target end, expectation. |
+| `output/target_finder.psrna.tsv` | Native psRNATarget 14-column table (only with `--psrna-detail`). |
 > **Notes**:
-> 1. The scoring scheme follows **psRNATarget** (https://www.zhaolab.org/psRNATarget/), implemented on top of the scripts from [jtremblay/mirnatarget](https://github.com/jtremblay/mirnatarget).
-> 2. Prediction stringency can be tuned with `-e/--evalue` (E-value threshold) and `--GUs` (allowed G:U mismatches).
-> 3. When a basic-info file from a previous `annotation` run is available, `-b/--basic` is preferred over `-i/--input`, since it carries family and strand information that improves target prediction.
-> 4. Since **ssearch36** cannot accept excessively long input paths, it is recommended that the character length of the parameter path not exceed 100.
+> 1. The scoring scheme follows **psRNATarget** (https://www.zhaolab.org/psRNATarget/). `--engine psrna` (default since 3.1.7b) runs the built-in reimplementation; `--engine ssearch` applies the same rules on top of the scripts from [jtremblay/mirnatarget](https://github.com/jtremblay/mirnatarget). Details, rules and validation: `docs/PSRNA-ENGINE.md`.
+> 2. Prediction stringency can be tuned with `-e/--evalue`. `--GUs` applies to `--engine ssearch` only, because psRNATarget V2 has no G:U cap.
+> 3. On archived psRNATarget output the default engine returns 99.6-99.8% of the reported miRNA-target pairs, against 62.6% for `--engine ssearch`, whose recall is limited by the ssearch36 `-b 200` HSP cap (raise it with `--max-hsp`). Rows are always written in a fixed order (mature FASTA order, then target, then start).
+> 4. When a basic-info file from a previous `annotation` run is available, `-b/--basic` is preferred over `-i/--input`, since it carries family and strand information that improves target prediction.
+> 5. Since **ssearch36** cannot accept excessively long input paths, it is recommended that the character length of the parameter path not exceed 100 (`--engine ssearch` only).
 
 ### miRNA promoter analysis
 ```bash
@@ -488,7 +504,8 @@ mirdeep-p3 analysis Onestep \
 > **Note**:
 > 1. All figures are also exported in **PDF and PNG** formats
 >    (e.g. `GO_bar.pdf`, `GO_bar.png`) — use whichever suits your needs.
-> 2. All available parameters are the same as those used in the preceding steps.
+> 2. All available parameters are the same as those used in the preceding steps (--min-expr is forwarded to Differential_expression, --target_engine to Target_finder).
+> 3. --target_engine psrna (default since 3.1.7b) runs the target step with the built-in psRNATarget-compatible engine; --target_engine ssearch keeps the historical behaviour. See docs/PSRNA-ENGINE.md.
 ## Examples
 See:
 - `examples/` for example datasets used to test additional features

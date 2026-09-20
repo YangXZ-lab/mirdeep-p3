@@ -33,7 +33,15 @@ def add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--threads", type=int, default=1, help="Number of threads (default: 1)")
     parser.add_argument("--rnaplot", action="store_true", help="Generate RNA structure plots in Stat")
     parser.add_argument("--tfbsplot", action="store_true", help="Generate TFBS report picture")
+    parser.add_argument("--target_engine", choices=["ssearch", "psrna"], default="psrna",
+                        help="Engine passed to Target_finder: psrna (default, built-in "
+                             "psRNATarget-compatible scanner) or ssearch (historical engine)")
     parser.add_argument("--DEOnly", action="store_true", help="Focus only on DE miRNAs for downstream")
+    parser.add_argument("--min-expr", type=float, default=5.0,
+                        help="Minimum RPM a miRNA must reach in at least one sample "
+                             "to be kept before PCA, correlation and differential "
+                             "expression (default: %(default)s). Use 0 to keep every "
+                             "miRNA.")
     parser.add_argument("--chord", action="store_true", help="Generate chord diagram in functional analysis")
     parser.add_argument("--EGGNOG_DATA_DIR",
                         help="Path to a local eggNOG database directory. Passed through to "
@@ -61,6 +69,12 @@ def run(args):
         sys.exit("Error: --case1 and --case2 must not overlap.")
     if len(case1_cols) != len(case2_cols):
         sys.exit("Error: --case1 and --case2 must have the same number of columns.")
+
+    # ---- expression filter threshold ----
+    if getattr(args, "min_expr", 5.0) < 0:
+        sys.exit("Error: --min-expr must be non-negative.")
+    print(f"[onestep] Expression filter: keeping miRNAs with RPM >= {args.min_expr} "
+          f"in at least one sample.")
 
     # ---- eggNOG database directory ----
     # Checked here, before the output directory is erased and before the four
@@ -129,7 +143,8 @@ def run(args):
            "-b", args.basic,
            "-c", args.transcript,
            "-o", str(output_dir),
-           "-t", str(args.threads)]
+           "-t", str(args.threads),
+           "--engine", args.target_engine]
     print("[onestep] Running Target_finder...")
     subprocess.run(cmd, check=True)
 
@@ -144,6 +159,7 @@ def run(args):
                "-o", str(output_dir)]
     if args.DEOnly:
         deg_cmd.append("--DEOnly")
+    deg_cmd += ["--min-expr", str(getattr(args, "min_expr", 5.0))]
     print("[onestep] Running Differential_expression...")
     subprocess.run(deg_cmd, check=True)
 

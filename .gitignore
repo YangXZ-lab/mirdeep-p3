@@ -2,4 +2,10 @@ __pycache__/
 *.pyc
 tests/output/
 tests/data/*.fai
-data/index/
+data/index
+
+# local-only artifacts (kept out of the release tree)
+tests/data/mini.fq
+tests/data/mini_genome.fasta
+tests/test_output/
+TEST-3.1.6d.md

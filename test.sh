@@ -6,7 +6,7 @@
 # on a small Arabidopsis test dataset (tests/data/mini.fq + mini_genome.fasta).
 #
 # Usage:
-#   ./test.sh            # run full test (identification + annotation)
+#   ./test.sh            # run full test (identification + annotation + target prediction)
 #   ./test.sh -q         # quiet mode (suppress pipeline stdout)
 #   ./test.sh -k         # keep test output (default: removed on success)
 #   ./test.sh -t 16      # use 16 threads (default: 8)
@@ -17,6 +17,7 @@
 #   2  data download failed
 #   3  identification failed
 #   4  annotation failed
+#   5  target prediction failed
 # =============================================================================
 set -u
 
@@ -140,7 +141,75 @@ if [ ! -s "$ANNO_OUT/mirdp3-test-basic-info" ]; then
 fi
 log "Annotation outputs verified."
 
-# ---- 9. Cleanup -------------------------------------------------------------
+# ---- 9. Target prediction ---------------------------------------------------
+# Fixture: 20 mature miRNAs and 300 CDS extracted from the Arctium_lappa dataset
+# used to validate the psrna engine (docs/PSRNA-ENGINE.md). It is small enough to
+# run in CI and fixed enough to assert an exact row count.
+TF_MATURE="$ROOT/tests/data/target_mini_mature.fa"
+TF_CDS="$ROOT/tests/data/target_mini_cds.fa"
+EXPECTED_PSRNA_ROWS=120
+if [ -f "$TF_MATURE" ] && [ -f "$TF_CDS" ]; then
+    log "Running target prediction (default engine: psrna)..."
+    TF_OUT="$OUT_DIR/target_psrna"
+    if ! run_quiet "$ROOT/mirdeep-p3" analysis Target_finder \
+            -i "$TF_MATURE" \
+            -c "$TF_CDS" \
+            -o "$TF_OUT" \
+            -t "$THREADS" \
+            -e 2.5; then
+        fail "Target_finder (psrna) failed (see log above)" 5
+    fi
+    TF_FILE="$TF_OUT/target_finder.tsv"
+    [ -s "$TF_FILE" ] || fail "Target prediction output missing: $TF_FILE" 5
+    TF_ROWS="$(wc -l < "$TF_FILE")"
+    if [ "$TF_ROWS" -ne "$EXPECTED_PSRNA_ROWS" ]; then
+        fail "psrna engine: expected $EXPECTED_PSRNA_ROWS rows, got $TF_ROWS" 5
+    fi
+    awk -F'\t' 'NF != 6 { exit 1 }' "$TF_FILE" || fail "psrna engine: rows are not 6 columns" 5
+
+    # The output order must be fixed: the same input twice has to be identical.
+    TF_OUT2="$OUT_DIR/target_psrna_repeat"
+    run_quiet "$ROOT/mirdeep-p3" analysis Target_finder \
+        -i "$TF_MATURE" -c "$TF_CDS" -o "$TF_OUT2" -t "$THREADS" -e 2.5 \
+        || fail "Target_finder repeat run failed" 5
+    cmp -s "$TF_FILE" "$TF_OUT2/target_finder.tsv" \
+        || fail "psrna engine: output is not deterministic" 5
+
+    # --no-allow-gap must stay available; on this fixture it changes nothing.
+    TF_OUT4="$OUT_DIR/target_psrna_nogap"
+    run_quiet "$ROOT/mirdeep-p3" analysis Target_finder --no-allow-gap \
+        -i "$TF_MATURE" -c "$TF_CDS" -o "$TF_OUT4" -t "$THREADS" -e 2.5 \
+        || fail "Target_finder --no-allow-gap failed" 5
+    cmp -s "$TF_FILE" "$TF_OUT4/target_finder.tsv" \
+        || fail "psrna engine: --no-allow-gap changed this fixture (expected identical)" 5
+    log "Target prediction (psrna) verified: $TF_ROWS rows, deterministic."
+
+    if command -v ssearch36 >/dev/null 2>&1; then
+        log "Running target prediction (engine ssearch)..."
+        TF_OUT3="$OUT_DIR/target_ssearch"
+        if ! run_quiet "$ROOT/mirdeep-p3" analysis Target_finder \
+                --engine ssearch \
+                -i "$TF_MATURE" \
+                -c "$TF_CDS" \
+                -o "$TF_OUT3" \
+                -t "$THREADS" \
+                -e 2.5; then
+            fail "Target_finder (ssearch) failed (see log above)" 5
+        fi
+        TF_ROWS3="$(wc -l < "$TF_OUT3/target_finder.tsv")"
+        if [ "$TF_ROWS3" -lt 100 ]; then
+            fail "ssearch engine: expected at least 100 rows, got $TF_ROWS3" 5
+        fi
+        awk -F'\t' 'NF != 6 { exit 1 }' "$TF_OUT3/target_finder.tsv" \
+            || fail "ssearch engine: rows are not 6 columns" 5
+        log "Target prediction (ssearch) verified: $TF_ROWS3 rows."
+    else
+        log "ssearch36 not found - skipping the ssearch engine check."
+    fi
+else
+    log "Target prediction fixture not found - skipping target prediction."
+fi
+# ---- 10. Cleanup -------------------------------------------------------------
 if [ "$KEEP_OUTPUT" -eq 0 ]; then
     log "Removing test output (use -k to keep)..."
     rm -rf "$OUT_DIR"

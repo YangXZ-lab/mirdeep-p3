@@ -54,6 +54,14 @@ def add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--consistency", help="Consistency reference basic-info file (e.g., YL1-basic-info)")
     parser.add_argument("--common", action="store_true", help="Enable common miRNA consistency analysis")
     parser.add_argument("--clean", action="store_true", help="Remove temporary directories (temp, index) after completion")
+    parser.add_argument("--max-5p-trunc", type=int, default=2,
+                        help="Maximum allowed 5' truncation of a read relative to the "
+                             "mature reference, in bp (default: %(default)s).")
+    parser.add_argument("--max-3p-trunc", type=int, default=3,
+                        help="Maximum allowed 3' truncation of a read relative to the "
+                             "mature reference, in bp (default: %(default)s). Use 2 to "
+                             "reproduce the <=3.1.6c behaviour; values above 3 inflate "
+                             "abundant families and are not recommended.")
 
     parser.add_argument("--bowtie", help="path to bowtie")
     parser.add_argument("--blastn", help="path to blastn")
@@ -422,6 +430,9 @@ def run_annotation_part2(
     subprocess.run([py_exe, str(src_dir / "expression_matrix.py"),
                     "-aln", aln_list, "-c", str(read_total_file),
                     "-species", args.species,
+                    "-fa", str(mature_1nt_fa),
+                    "--max-5p-trunc", str(getattr(args, "max_5p_trunc", 2)),
+                    "--max-3p-trunc", str(getattr(args, "max_3p_trunc", 3)),
                     "-o", str(output_group_dir / f"{exp_prefix}-mature.exp"),
                     "-oc", str(output_group_dir / f"{exp_prefix}-mature.count")],
                    stdout=subprocess.DEVNULL, stderr=open(output_group_dir / f"{output_group_dir.name}_annotation.log", 'a'), check=True)

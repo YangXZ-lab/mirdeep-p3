@@ -6,16 +6,25 @@
 """
 Build miRNA expression matrix from alignment files.
 
-For each sample, parse the mature miRNA alignment file, filter alignments that
-start within 2 bp of the 5' end and cover within 2 bp of the 3' end, calculate
-both RPM (Reads Per Million) and raw read counts for each miRNA, and output
-two matrices: one with RPM values and one with raw counts.
+For each sample, parse the mature miRNA alignment file, keep the alignments
+that start within ``--max-5p-trunc`` bp of the 5' end and end within
+``--max-3p-trunc`` bp of the 3' end, then compute both RPM (Reads Per Million)
+and raw read counts for each miRNA.
+
+When ``-fa`` is given, the reference FASTA used for the bowtie alignment
+(``<prefix>-basic-info-mature-1nt.fa``) is parsed as well, so that every
+reference miRNA receives a row in the output matrices even when no read in any
+sample passes the coverage filter. Such rows are zero-filled, and the row order
+follows the reference FASTA, which is the same order as
+``<prefix>-basic-info``. Without ``-fa`` the row set is derived from the
+alignments alone, reproducing the behaviour up to 3.1.6c.
 
 Inputs:
   -aln: one or more alignment files (comma-separated)
   -c: total read counts file (sample<TAB>total_reads)
   -species: species name (spaces replaced by underscores, used in output header)
   -prefix: comma-separated list of sample identifiers (must match -aln count)
+  -fa: reference FASTA used for the alignment (enables zero-filling)
   -o: output matrix file (RPM values)
   -oc: output matrix file (raw counts)
 """
@@ -25,6 +34,14 @@ import re
 import argparse
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
+
+
+# 3.1.6c used 5'<=2 and 3'<=2. The 3' tolerance is relaxed to 3 bp here because
+# plant sRNA-seq libraries are dominated by 19-21 nt reads and a read that is
+# only 1 bp shorter than the previous cut-off silently drops the whole miRNA
+# out of the matrix.
+DEFAULT_MAX_5P_TRUNC = 2
+DEFAULT_MAX_3P_TRUNC = 3
 
 
 def parse_total_reads(counts_file: str) -> Dict[str, int]:
@@ -63,8 +80,65 @@ def extract_sample_name(aln_file: str) -> str:
     return base
 
 
-def parse_alignment_file(aln_file: str, total_reads: int) -> Tuple[Dict[Tuple[str, str], float],
-                                                                    Dict[Tuple[str, str], int]]:
+def parse_reference_fasta(fa_file: str) -> Tuple[List[Tuple[str, str]], Dict[Tuple[str, str], int]]:
+    """
+    Parse the reference FASTA used for the alignment.
+
+    Headers are written by ``extract_mature_flank.py`` as
+    ``>{ref_len}={mir_name}={mir_acc}``. The returned key order follows the
+    file, which in turn follows the row order of ``*-basic-info``.
+
+    Returns:
+        keys: ordered list of (mir_name, mir_acc)
+        ref_len: { (mir_name, mir_acc): reference length }
+    """
+    keys: List[Tuple[str, str]] = []
+    ref_len: Dict[Tuple[str, str], int] = {}
+    seen = set()
+    state = {'name': None, 'acc': '', 'declared': 0, 'seq_len': 0}
+
+    def _flush():
+        name = state['name']
+        if name is None:
+            return
+        key = (name, state['acc'])
+        ref_len[key] = state['seq_len'] or state['declared']
+        if key not in seen:
+            seen.add(key)
+            keys.append(key)
+
+    with open(fa_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith('>'):
+                _flush()
+                parts = line[1:].split('=', 2)
+                if len(parts) >= 2:
+                    try:
+                        state['declared'] = int(parts[0])
+                    except ValueError:
+                        state['declared'] = 0
+                    state['name'] = parts[1]
+                    state['acc'] = parts[2] if len(parts) > 2 else ''
+                else:
+                    state['declared'] = 0
+                    state['name'] = line[1:]
+                    state['acc'] = ''
+                state['seq_len'] = 0
+            else:
+                state['seq_len'] += len(line)
+    _flush()
+    return keys, ref_len
+
+
+def parse_alignment_file(aln_file: str, total_reads: int,
+                         max_5p_trunc: int = DEFAULT_MAX_5P_TRUNC,
+                         max_3p_trunc: int = DEFAULT_MAX_3P_TRUNC,
+                         ref_len: Optional[Dict[Tuple[str, str], int]] = None,
+                         stats: Optional[Dict[str, int]] = None) -> Tuple[Dict[Tuple[str, str], float],
+                                                                          Dict[Tuple[str, str], int]]:
     """
     Parse an alignment file and compute RPM and raw counts for each miRNA.
 
@@ -96,7 +170,7 @@ def parse_alignment_file(aln_file: str, total_reads: int) -> Tuple[Dict[Tuple[st
                     continue
                 raw_reads = int(read_match.group(1))
 
-                # Extract miRNA length from mir_info (e.g., "23=")
+                # Extract reference length from mir_info (e.g., "23=")
                 len_match = re.match(r'^(\d+)=', mir_info)
                 if not len_match:
                     continue
@@ -117,14 +191,26 @@ def parse_alignment_file(aln_file: str, total_reads: int) -> Tuple[Dict[Tuple[st
                 except ValueError:
                     continue
 
-                # Filtering: offset > 2 or offset + len(seq) < mir_len - 2
-                if offset > 2 or (offset + len(seq) < mir_len - 2):
+                # Coverage filter. gap_5p is the number of reference bases in
+                # front of the read, gap_3p the number left uncovered behind
+                # it. A negative gap means the read runs past that end.
+                gap_5p = offset
+                gap_3p = mir_len - (offset + len(seq))
+                if gap_5p > max_5p_trunc or gap_3p > max_3p_trunc:
+                    if stats is not None:
+                        stats['filtered'] = stats.get('filtered', 0) + 1
+                        if gap_5p > max_5p_trunc:
+                            stats['fail_5p'] = stats.get('fail_5p', 0) + 1
+                        if gap_3p > max_3p_trunc:
+                            stats['fail_3p'] = stats.get('fail_3p', 0) + 1
                     continue
 
                 key = (mir_name, mir_acc)
                 rpm = raw_reads / total_reads * 1_000_000
                 rpm_dict[key] = rpm_dict.get(key, 0.0) + rpm
                 count_dict[key] = count_dict.get(key, 0) + raw_reads
+                if stats is not None:
+                    stats['kept'] = stats.get('kept', 0) + 1
 
     except Exception as e:
         print(f"Error processing {aln_file}: {e}", file=sys.stderr)
@@ -178,11 +264,26 @@ def main():
                         help="Species name (spaces replaced by underscores).")
     parser.add_argument('-prefix', default=None,
                         help="Comma-separated list of sample identifiers (must match -aln count).")
+    parser.add_argument('-fa', '--reference-fasta', dest='fa', default=None,
+                        help="Reference FASTA used for the alignment, i.e. "
+                             "'<prefix>-basic-info-mature-1nt.fa'. When given, every "
+                             "reference miRNA is written to the matrix (zero-filled if no "
+                             "read passes the filter) in reference order.")
+    parser.add_argument('--max-5p-trunc', type=int, default=DEFAULT_MAX_5P_TRUNC,
+                        help="Maximum allowed 5' truncation in bp (default: %(default)s).")
+    parser.add_argument('--max-3p-trunc', type=int, default=DEFAULT_MAX_3P_TRUNC,
+                        help="Maximum allowed 3' truncation in bp (default: %(default)s; "
+                             "use 2 to reproduce the 3.1.6c behaviour, 4 for the most "
+                             "permissive setting tested).")
     parser.add_argument('-o', required=True,
                         help="Output RPM matrix file.")
     parser.add_argument('-oc', required=True,
                         help="Output raw count matrix file.")
     args = parser.parse_args()
+
+    if args.max_5p_trunc < 0 or args.max_3p_trunc < 0:
+        print("Error: truncation tolerances must be non-negative.", file=sys.stderr)
+        sys.exit(1)
 
     # Process species
     species = args.species.replace(' ', '_')
@@ -211,15 +312,35 @@ def main():
         print(f"Error: Sample(s) not found in counts file: {', '.join(missing)}", file=sys.stderr)
         sys.exit(1)
 
+    # Optional reference FASTA for zero-filling
+    ref_keys = None
+    ref_len = None
+    if args.fa:
+        if not Path(args.fa).is_file():
+            print(f"Error: reference FASTA not found: {args.fa}", file=sys.stderr)
+            sys.exit(1)
+        ref_keys, ref_len = parse_reference_fasta(args.fa)
+        if not ref_keys:
+            print(f"Error: no sequence found in reference FASTA: {args.fa}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Reference miRNAs in {Path(args.fa).name}: {len(ref_keys)}", file=sys.stderr)
+
     # Store data
     rpm_data = {sample: {} for sample in sample_names}
     count_data = {sample: {} for sample in sample_names}
     all_keys = set()
+    stats: Dict[str, int] = {}
 
     for aln_file, sample in zip(aln_files, sample_names):
         total = total_reads_dict[sample]
         print(f"Processing {sample} from {aln_file} (total reads: {total:,})", file=sys.stderr)
-        rpm_dict, count_dict = parse_alignment_file(aln_file, total)
+        rpm_dict, count_dict = parse_alignment_file(
+            aln_file, total,
+            max_5p_trunc=args.max_5p_trunc,
+            max_3p_trunc=args.max_3p_trunc,
+            ref_len=ref_len,
+            stats=stats,
+        )
         rpm_data[sample] = rpm_dict
         count_data[sample] = count_dict
         all_keys.update(rpm_dict.keys())
@@ -228,8 +349,30 @@ def main():
         print("Error: No valid miRNA data found.", file=sys.stderr)
         sys.exit(1)
 
-    # Sort keys and samples
-    sorted_keys = sorted(all_keys, key=lambda x: (x[0], x[1]))
+    kept = stats.get('kept', 0)
+    filtered = stats.get('filtered', 0)
+    total_lines = kept + filtered
+    print(f"Coverage filter: 5'<={args.max_5p_trunc} bp, 3'<={args.max_3p_trunc} bp", file=sys.stderr)
+    if total_lines:
+        print(f"  alignments kept: {kept:,} / {total_lines:,} ({100.0 * kept / total_lines:.2f}%)", file=sys.stderr)
+        print(f"  dropped: {filtered:,} (5' over: {stats.get('fail_5p', 0):,}, "
+              f"3' over: {stats.get('fail_3p', 0):,}, categories may overlap)", file=sys.stderr)
+
+    # Determine the row set. With -fa the reference defines it, so miRNAs that
+    # only failed the coverage filter no longer disappear from the matrices.
+    if ref_keys is not None:
+        ordered_keys = list(ref_keys)
+        extra = all_keys - set(ref_keys)
+        if extra:
+            print(f"Warning: {len(extra)} aligned miRNA(s) absent from the reference FASTA; appending them.",
+                  file=sys.stderr)
+            ordered_keys.extend(sorted(extra))
+        zero_filled = len(set(ref_keys) - all_keys)
+        print(f"  rows zero-filled: {zero_filled} (of {len(ref_keys)} reference miRNAs)", file=sys.stderr)
+        sorted_keys = ordered_keys
+    else:
+        sorted_keys = sorted(all_keys, key=lambda x: (x[0], x[1]))
+
     sorted_samples = sorted(sample_names)
 
     # Write RPM matrix
