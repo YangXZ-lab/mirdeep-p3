@@ -344,7 +344,12 @@ def add_arguments(parser: argparse.ArgumentParser):
                              "corrupt or truncated .gz is rejected before any computation. "
                              "Off by default (the tail is then checked while decompressing).")
     parser.add_argument("--clean", action="store_true",
-                        help="Remove temporary directories (temp, index) after successful completion")
+                        help="Remove the per-sample temporary directories (<prefix>/temp) after "
+                             "successful completion. The genome index is kept; add --clean-index "
+                             "to remove that as well.")
+    parser.add_argument("--clean-index", dest="clean_index", action="store_true",
+                        help="Also remove the auto-built genome index (<out>/index) when cleaning. "
+                             "An index passed with -d is never touched.")
 
     # Switches
     parser.add_argument("--reads_clean", dest="reads_clean", action="store_true", default=True,
@@ -1144,6 +1149,16 @@ def run(args):
                 target = output_root / pref / subdir
                 if target.exists():
                     shutil.rmtree(target)
+    if getattr(args, 'clean_index', False):
+        # Only the index this run built under <out>/index may be removed here; an
+        # index supplied with -d belongs to the user and must be left alone.
+        if getattr(args, 'index', None):
+            print("[clean-index] skipped: the index came from -d and is left in place.")
+        else:
+            index_dir = output_root / "index"
+            if index_dir.exists():
+                print(f"[clean-index] removing {index_dir}")
+                shutil.rmtree(index_dir)
 
     print("\nIdentification step completed successfully.")
 

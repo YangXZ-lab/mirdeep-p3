@@ -27,7 +27,7 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-from utils.dependencies import check_external_tools
+from utils.toolset import add_tool_arguments, resolve_tools
 from utils.shellquote import shq
 
 TARGET_ENGINES = ("ssearch", "psrna")
@@ -60,6 +60,10 @@ def add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--psrna-detail", action="store_true",
                         help="[psrna only] also write the native psRNATarget 14-column table "
                              "(<output>/target_finder.psrna.tsv)")
+    parser.add_argument("--keep-temp", action="store_true",
+                        help="Keep the intermediate files under <output>/temp. They are "
+                             "removed once the run finishes, unless this flag is given.")
+    add_tool_arguments(parser)
 
 
 def _clean_name(name: str) -> str:
@@ -144,7 +148,7 @@ def _write_tab6_from_psrna(raw_tsv: Path, out_tsv: Path, lengths: dict, order: d
 
 
 def _run_ssearch_engine(args, mature_fa: Path, cds_fa: Path, output_dir: Path, temp_dir: Path,
-                        project_root: Path) -> Path:
+                        project_root: Path, tools: dict) -> Path:
     """Original ssearch36 + MiRNATarget pipeline."""
     mi_rna_target_dir = project_root / "src" / "MiRNATarget"
     scripts_dir = project_root / "scripts"
@@ -152,7 +156,7 @@ def _run_ssearch_engine(args, mature_fa: Path, cds_fa: Path, output_dir: Path, t
 
     # ---- Step 1: Reverse complement ----
     rp_fa = temp_dir / "mature.rp.fa"
-    subprocess.run(f"seqkit seq {shq(mature_fa)} -r -p > {shq(rp_fa)}",
+    subprocess.run(f"{shq(tools['seqkit'])} seq {shq(mature_fa)} -r -p > {shq(rp_fa)}",
                    shell=True, check=True)
 
     # ssearch36 base options
@@ -162,13 +166,13 @@ def _run_ssearch_engine(args, mature_fa: Path, cds_fa: Path, output_dir: Path, t
 
     # Forward alignment
     forw_aln = temp_dir / "forward_alignment"
-    subprocess.run(f"ssearch36 {ssearch_opts} {shq(mature_fa)} {shq(cds_fa)} "
+    subprocess.run(f"{shq(tools['ssearch36'])} {ssearch_opts} {shq(mature_fa)} {shq(cds_fa)} "
                    f"> {shq(forw_aln)}",
                    shell=True, check=True)
 
     # Reverse alignment
     rev_aln = temp_dir / "reverse_alignment"
-    subprocess.run(f"ssearch36 {ssearch_opts} {shq(rp_fa)} {shq(cds_fa)} "
+    subprocess.run(f"{shq(tools['ssearch36'])} {ssearch_opts} {shq(rp_fa)} {shq(cds_fa)} "
                    f"> {shq(rev_aln)}",
                    shell=True, check=True)
 
@@ -176,9 +180,9 @@ def _run_ssearch_engine(args, mature_fa: Path, cds_fa: Path, output_dir: Path, t
     parse_script = scripts_dir / "parse_ssearch.py"
     forw_tsv = temp_dir / "forward_alignment.tsv"
     rev_tsv = temp_dir / "reverse_alignment.tsv"
-    subprocess.run(f"python {shq(parse_script)} -i {shq(forw_aln)} > {shq(forw_tsv)}",
+    subprocess.run(f"{shq(tools['python'])} {shq(parse_script)} -i {shq(forw_aln)} > {shq(forw_tsv)}",
                    shell=True, check=True)
-    subprocess.run(f"python {shq(parse_script)} -i {shq(rev_aln)} > {shq(rev_tsv)}",
+    subprocess.run(f"{shq(tools['python'])} {shq(parse_script)} -i {shq(rev_aln)} > {shq(rev_tsv)}",
                    shell=True, check=True)
     total_tsv = temp_dir / "total.tsv"
     subprocess.run(f"cat {shq(forw_tsv)} {shq(rev_tsv)} > {shq(total_tsv)}",
@@ -193,7 +197,7 @@ def _run_ssearch_engine(args, mature_fa: Path, cds_fa: Path, output_dir: Path, t
 
     # Get mature length
     mature_len = temp_dir / "mature.length"
-    subprocess.run(f"seqkit fx2tab --length --name --header-line {shq(mature_fa)} | "
+    subprocess.run(f"{shq(tools['seqkit'])} fx2tab --length --name --header-line {shq(mature_fa)} | "
                    f"grep -v '#' > {shq(mature_len)}",
                    shell=True, check=True)
 
@@ -290,17 +294,25 @@ def run(args):
     if not cds_fa.exists():
         sys.exit(f"CDS file not found: {cds_fa}")
 
-    # ---- Check required external tools ----
+    # ---- External tools: resolved once, overridable with --ssearch36/--seqkit ----
     if engine == "ssearch":
-        tools_ok, missing = check_external_tools({'ssearch36': None, 'seqkit': None})
-        if not tools_ok:
-            sys.exit("Error: ssearch36 / seqkit not found in PATH "
-                     "(or use --engine psrna, which needs no external aligner).")
+        tools = resolve_tools(args, required=["ssearch36", "seqkit"],
+                              hint="Or use --engine psrna, which needs no external aligner.")
+    else:
+        tools = resolve_tools(args, required=[])
 
     # ---- Run ----
     if engine == "psrna":
         final_output = _run_psrna_engine(args, mature_fa, cds_fa, output_dir, temp_dir, project_root)
     else:
-        final_output = _run_ssearch_engine(args, mature_fa, cds_fa, output_dir, temp_dir, project_root)
+        final_output = _run_ssearch_engine(args, mature_fa, cds_fa, output_dir, temp_dir,
+                                           project_root, tools)
+
+    # ---- Temp cleanup (I-02): on by default, --keep-temp opts out ----
+    if getattr(args, "keep_temp", False):
+        print(f"  [keep-temp] intermediate files kept in {temp_dir}")
+    elif temp_dir.exists():
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        print(f"  [temp] removed {temp_dir} (use --keep-temp to keep it)")
 
     print(f"\nTarget_finder completed. Results written to {final_output}")

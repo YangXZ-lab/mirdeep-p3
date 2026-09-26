@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 from utils.shellquote import shq
+from utils.toolset import add_tool_arguments, resolve_tools
 
 def add_arguments(parser: argparse.ArgumentParser):
     """Define Stat-specific arguments."""
@@ -27,6 +28,7 @@ def add_arguments(parser: argparse.ArgumentParser):
                         help="Comma-separated list of miRNA IDs for RNA plotting (e.g., 'Sta-MIR157a,Sta-MIR156a')")
     parser.add_argument("-h", "--help", action="help",
                         help="Show this help message and exit.")
+    add_tool_arguments(parser)
 
 
 def run(args):
@@ -47,9 +49,12 @@ def run(args):
         output_dir = Path(f"mirdeep-stat-{datetime.now().strftime('%m%d%y-%H%M')}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # ---- External tools: resolved once, overridable with --rscript/--python ----
+    tools = resolve_tools(args, required=["rscript"])
+
     # ---- Step 1: basic statistics ----
     basic_stat_script = scripts_dir / "basic_stat.R"
-    cmd = f"Rscript {shq(basic_stat_script)} -i {shq(input_file)} -o {shq(output_dir)}"
+    cmd = f"{shq(tools['rscript'])} {shq(basic_stat_script)} -i {shq(input_file)} -o {shq(output_dir)}"
     subprocess.run(cmd, shell=True, check=True)
     print("Basic statistics generated.")
 
@@ -57,10 +62,10 @@ def run(args):
     if args.rnaplot:
         rna_plot_script = scripts_dir / "RNA_plot.py"
         if args.list:
-            cmd = (f"python {shq(rna_plot_script)} -i {shq(input_file)} "
+            cmd = (f"{shq(tools['python'])} {shq(rna_plot_script)} -i {shq(input_file)} "
                    f"-o {shq(output_dir)} --list {shq(args.list)}")
         else:
-            cmd = f"python {shq(rna_plot_script)} -i {shq(input_file)} -o {shq(output_dir)}"
+            cmd = f"{shq(tools['python'])} {shq(rna_plot_script)} -i {shq(input_file)} -o {shq(output_dir)}"
         subprocess.run(cmd, shell=True, check=True)
         print("RNA structure plots generated.")
 

@@ -198,6 +198,7 @@ mirdeep-p3 identification \
 - **Custom reference build**: pass your own genome with `-g`; if `-d`
   is omitted, the bowtie index is auto-built under the output/index directory.
 - **Skip steps**: `--no-reads_clean` skip the reads clean step.
+- **Clean up**: `--clean` deletes each sample's `temp/` after the run, while the bowtie index under `output/index` is kept. Add `--clean-index` to delete the index as well (ignored when the index came from `-d`).
 
 ### miRNA annotation after identification
 ```bash
@@ -307,6 +308,7 @@ mirdeep-p3 analysis Target_finder --engine ssearch \
 | `--allow-gap / --no-allow-gap` | `--engine psrna` only: whether to report sites carrying a single-base indel (optional, default: on). `--no-allow-gap` restricts the output to indel-free sites. | `[e.g., --no-allow-gap]` |
 | `--psrna-detail` | `--engine psrna` only: also write the native 14-column psRNATarget table (optional). | `[e.g., --psrna-detail]` |
 | `--max-hsp` | `--engine ssearch` only: ssearch36 `-b` value, i.e. the maximum number of HSPs reported per miRNA (optional, default: 200). | `[e.g., 2000]` |
+| `--keep-temp` | Keep the intermediate files in `<output>/temp` instead of deleting them at the end of the run (optional). | `[e.g., --keep-temp]` |
 
 | Path | Description |
 |---|---|
@@ -318,6 +320,7 @@ mirdeep-p3 analysis Target_finder --engine ssearch \
 > 3. On archived psRNATarget output the default engine returns 99.6-99.8% of the reported miRNA-target pairs, against 62.6% for `--engine ssearch`, whose recall is limited by the ssearch36 `-b 200` HSP cap (raise it with `--max-hsp`). Rows are always written in a fixed order (mature FASTA order, then target, then start).
 > 4. When a basic-info file from a previous `annotation` run is available, `-b/--basic` is preferred over `-i/--input`, since it carries family and strand information that improves target prediction.
 > 5. Since **ssearch36** cannot accept excessively long input paths, it is recommended that the character length of the parameter path not exceed 100 (`--engine ssearch` only).
+> 6. Intermediates are written to `<output>/temp` and deleted when the run finishes; `--keep-temp` keeps them for inspection.
 
 ### miRNA promoter analysis
 ```bash
@@ -506,6 +509,37 @@ mirdeep-p3 analysis Onestep \
 >    (e.g. `GO_bar.pdf`, `GO_bar.png`) — use whichever suits your needs.
 > 2. All available parameters are the same as those used in the preceding steps (--min-expr is forwarded to Differential_expression, --target_engine to Target_finder).
 > 3. --target_engine psrna (default since 3.1.7b) runs the target step with the built-in psRNATarget-compatible engine; --target_engine ssearch keeps the historical behaviour. See docs/PSRNA-ENGINE.md.
+### Overriding external tool paths
+
+`analysis` subcommands call `Rscript`, `fimo`, `bedtools`, `ssearch36`, `seqkit` and
+`emapper.py` as separate processes. When a tool is not on `PATH`, or a specific build
+must be used, pass its path explicitly:
+
+```bash
+mirdeep-p3 analysis Differential_expression \
+  --rscript /opt/R/4.4/bin/Rscript \
+  -c <mature.count> -r <mature.exp> \
+  --case1 <control_cols> --case2 <treated_cols> -o <output_dir>
+```
+
+| Parameter | Used by | Description |
+|---|---|---|
+| `--rscript` | Stat, TFBS (`--picture`), DE, FA, Onestep | Path to `Rscript`. |
+| `--fimo`, `--bedtools` | TFBS | Path to FIMO and bedtools. |
+| `--ssearch36`, `--seqkit` | Target_finder (`--engine ssearch`) | The default engine needs neither. |
+| `--emapper` | Functional_analysis (`-p`), Onestep | Path to `emapper.py`. |
+| `--python` | all | Interpreter for the bundled helper scripts (default: the one running miRDeep-P3). |
+
+Each command first reports what it resolved, for example:
+
+```
+External dependency check:
+  Rscript ✔ (/opt/R/4.4/bin/Rscript)
+```
+
+and aborts with a non-zero status naming the missing tool when a required one is
+unusable. `Onestep` forwards its overrides to the five steps it runs.
+
 ## Examples
 See:
 - `examples/` for example datasets used to test additional features

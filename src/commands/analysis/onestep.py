@@ -13,6 +13,7 @@ import subprocess
 import shutil
 from pathlib import Path
 from utils.shellquote import shq
+from utils.toolset import add_tool_arguments, forward_tool_args
 
 
 def add_arguments(parser: argparse.ArgumentParser):
@@ -51,6 +52,7 @@ def add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--kojson",
                         help="Path to ko00001.json (KO hierarchy used to build the OrgDb). "
                              "Default: <project_root>/data/ko00001.json")
+    add_tool_arguments(parser)
 
 
 def run(args):
@@ -124,6 +126,7 @@ def run(args):
            "-i", args.basic, "-o", str(output_dir)]
     if args.rnaplot:
         cmd.append("--rnaplot")
+    cmd += forward_tool_args(args)
     print("[onestep] Running Stat...")
     subprocess.run(cmd, check=True)
 
@@ -135,6 +138,7 @@ def run(args):
            "-o", str(output_dir)]
     if args.tfbsplot:
         cmd.append("-p")
+    cmd += forward_tool_args(args)
     print("[onestep] Running TFBS...")
     subprocess.run(cmd, check=True)
 
@@ -145,6 +149,7 @@ def run(args):
            "-o", str(output_dir),
            "-t", str(args.threads),
            "--engine", args.target_engine]
+    cmd += forward_tool_args(args)
     print("[onestep] Running Target_finder...")
     subprocess.run(cmd, check=True)
 
@@ -160,6 +165,7 @@ def run(args):
     if args.DEOnly:
         deg_cmd.append("--DEOnly")
     deg_cmd += ["--min-expr", str(getattr(args, "min_expr", 5.0))]
+    deg_cmd += forward_tool_args(args)
     print("[onestep] Running Differential_expression...")
     subprocess.run(deg_cmd, check=True)
 
@@ -192,6 +198,7 @@ def run(args):
         func_cmd += ["--EGGNOG_DATA_DIR", str(args.EGGNOG_DATA_DIR)]
     if getattr(args, "kojson", None):
         func_cmd += ["--kojson", str(args.kojson)]
+    func_cmd += forward_tool_args(args)
     print("[onestep] Running Functional_analysis...")
     # 0 ok | 2 PARTIAL_SUCCESS | 3 NO_TERMS (empty result) | other = failure.
     # check=True would turn 2 and 3 into a traceback; classify them instead.

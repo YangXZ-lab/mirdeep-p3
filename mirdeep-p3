@@ -363,10 +363,11 @@ def main():
                     norm.add('annotation')
             if 'identification' in norm and 'annotation' in norm:
                 # This is a combined run, handle separately
-                cli_args = sys.argv[1:]  # all args except script name
-                # Remove the --step and its value from cli_args
-                del cli_args[step_idx - 1]   # -1 because cli_args index is sys.argv index - 1
-                del cli_args[step_idx - 1]   # now the next element (the step value) is removed
+                # Rebuild the argument list instead of deleting by index: the old
+                # dels assumed --step sat at argv[1], so any option written before
+                # --step silently dropped the wrong arguments (I-05).
+                cli_args = [arg for i, arg in enumerate(sys.argv[1:], start=1)
+                            if i not in (step_idx, step_idx + 1)]
                 if '-h' in cli_args or '--help' in cli_args:
                     show_combined_identification_annotation_help()
                     sys.exit(0)

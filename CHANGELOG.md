@@ -8,6 +8,67 @@ Release tags follow the scheme `v<version>` (source, used by the conda recipe) a
 Releases before 3.1.6c are listed on the
 [GitHub Releases page](https://github.com/YangXZ-lab/mirdeep-p3/releases).
 
+## [Unreleased] - 3.1.7c
+
+3.1.7c is a maintenance release: it closes the entries of the issue ledger that were
+approved for this cycle, makes the analysis commands fail early with an actionable
+message when an external tool is unusable, and stops leaving large temp directories
+behind.
+
+### Added
+
+- **External tool paths for every analysis subcommand** (`src/utils/toolset.py`, new).
+  Stat, TFBS, Target_finder, Differential_expression, Functional_analysis and Onestep
+  accept `--rscript`, `--fimo`, `--bedtools`, `--ssearch36`, `--seqkit`,
+  `--emapper` and `--python`. Each command prints an `External dependency check:`
+  block with the resolved paths and exits before doing any work if a required tool is
+  missing or not executable. Onestep forwards whatever it was given to its sub-steps.
+
+- **`--keep-temp` for Target_finder** (`src/commands/analysis/target_finder.py`).
+  The temp directory is removed when the run finishes; `--keep-temp` keeps the
+  intermediate alignments, matching the behaviour of the other analysis commands.
+
+- **`--clean-index` for identification** (`src/commands/identification.py`).
+  `--clean` now really removes only `<prefix>/temp`, and the bowtie index is deleted by
+  the new flag. When the index was supplied with `-d` it is left in place and the skip
+  is logged.
+
+- **`src/miRNA_consistency.py`** (restored). The script behind
+  `annotation --consistency` and `--common` was missing from the repository, so both
+  flags aborted with `FileNotFoundError`.
+
+- **`scripts/dedup_score_pair.py`** (restored). Referenced by
+  `docs/core-dataset.md` but absent, which broke the documented core-dataset
+  evaluation pipeline.
+
+### Changed
+
+- **`src/check_python_deps.py` now reports what it actually checks.** The pipeline
+  core needs no third-party package; numpy is reported as an optional dependency of
+  `Target_finder --engine psrna`. The previous list contained only standard-library
+  modules, so the check could never fail.
+
+- **`--step` stripping in `./mirdeep-p3`.** The two `del cli_args[...]` calls assumed
+  a fixed offset; the flag and its value are now filtered by index, so `-h --step 1,2`
+  and `--step 1,2 -h` produce identical help.
+
+### Fixed
+
+- Executable bits: `mirdeep-p3`, `src/miRNA_consistency.py` and
+  `scripts/dedup_score_pair.py` are committed as `100755`.
+
+### Validation
+
+- `./test.sh -t 12 -k` — ALL TESTS PASSED (identification, annotation, both target
+  engines, determinism).
+- Functional smoke suite (33 checks): help of the six analysis subcommands,
+  `--step` parsing equivalence, both `miRNA_consistency` modes on a real basic-info
+  file, Stat, TFBS on a BED input, Target_finder with and without `--keep-temp`
+  (identical output), the ssearch engine, early abort on a bad `--rscript` /
+  `--emapper`, and DE on a negative-binomial 3v3 matrix (237 miRNAs tested,
+  33 up / 22 down, temp cleaned).
+
+
 ## [Unreleased] - 3.1.7b
 
 3.1.7b makes that second engine the default, turns on indel tolerance, and adds a

@@ -15,8 +15,8 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-from utils.dependencies import check_external_tools
 from utils.shellquote import shq
+from utils.toolset import add_tool_arguments, resolve_tools
 
 
 def add_arguments(parser: argparse.ArgumentParser):
@@ -41,6 +41,7 @@ def add_arguments(parser: argparse.ArgumentParser):
                         help="Reference genome FASTA file [required]")
     parser.add_argument("-p", "--picture", action="store_true",
                         help="Generate TFBS report picture")
+    add_tool_arguments(parser)
 
 
 def run(args):
@@ -70,10 +71,9 @@ def run(args):
     if not args.genome:
         sys.exit("Error: -g/--genome is required. Use -h for help.")
         
-    # ---- Check required external tools ----
-    tools_ok, missing = check_external_tools({'bedtools': None, 'fimo': None})
-    if not tools_ok:
-        sys.exit("Error: missing required external dependencies (bedtools, fimo).")
+    # ---- External tools: resolved once; --bedtools/--fimo/--rscript/--python ----
+    tools = resolve_tools(args, required=["bedtools", "fimo"],
+                          optional=["rscript"] if args.picture else [])
 
     # ---- Determine input ----
     if args.input and args.bed:
@@ -114,7 +114,7 @@ def run(args):
     # ---- Step 2: Upstream extraction ----
     upstream_bed = temp_dir / "tfbs_input.upstream.bed"
     get_upstream_script = project_root / "scripts" / "get_upstream.py"
-    cmd = (f"python {shq(get_upstream_script)} -u {args.upstream} "
+    cmd = (f"{shq(tools['python'])} {shq(get_upstream_script)} -u {args.upstream} "
            f"-o {shq(upstream_bed)} {shq(input_bed)} {shq(args.fai)}")
     subprocess.run(cmd, shell=True, check=True)
 
@@ -124,7 +124,7 @@ def run(args):
     if not genome_file.is_file():
         sys.exit(f"Genome file not found: {genome_file}")
     subprocess.run(
-        f"bedtools getfasta -s -nameOnly -bed {shq(upstream_bed)} "
+        f"{shq(tools['bedtools'])} getfasta -s -nameOnly -bed {shq(upstream_bed)} "
         f"-fi {shq(genome_file)} -fo {shq(upstream_fa)}",
         shell=True, check=True
     )
@@ -165,7 +165,7 @@ def run(args):
     log_file = output_dir / "tfbs.log"
     with open(log_file, 'w') as log_fh:
         subprocess.run(
-            f"fimo --max-strand --bgfile {shq(bg_file)} --thresh {args.evalue} "
+            f"{shq(tools['fimo'])} --max-strand --bgfile {shq(bg_file)} --thresh {args.evalue} "
             f"-oc {shq(fimo_out)} {shq(meme_file)} {shq(upstream_fa)}",
             shell=True, check=True, stdout=log_fh, stderr=subprocess.STDOUT
         )
@@ -184,11 +184,11 @@ def run(args):
     # ---- Step 7: Optional picture ----
     if args.picture:
         rscript_script = project_root / "scripts" / "tfbs_report.R"
-        if shutil.which("Rscript") is None:
+        if "rscript" not in tools:
             print("Warning: Rscript not found, skipping picture generation.")
         else:
             subprocess.run(
-                f"Rscript {shq(rscript_script)} -i {shq(tfbs_output)} "
+                f"{shq(tools['rscript'])} {shq(rscript_script)} -i {shq(tfbs_output)} "
                 f"-o {shq(output_dir)}",
                 shell=True, check=True
             )

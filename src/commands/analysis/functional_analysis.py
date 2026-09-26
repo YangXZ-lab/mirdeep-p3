@@ -16,8 +16,8 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-from utils.dependencies import check_external_tools
 from utils.shellquote import shq
+from utils.toolset import add_tool_arguments, resolve_tools
 
 
 def add_arguments(parser: argparse.ArgumentParser):
@@ -47,6 +47,7 @@ def add_arguments(parser: argparse.ArgumentParser):
                         help="Output directory (default: mirdeep-functional_analysis-<timestamp>)")
     parser.add_argument("--chord", action="store_true",
                         help="Generate chord diagram (only with --target)")
+    add_tool_arguments(parser)
 
 
 def run_enrichment_step(cmd: str, label: str) -> str:
@@ -110,13 +111,14 @@ def run(args):
     os.environ.setdefault("MIRDEEP_R_LIB", str(r_lib))
     print(f"[functional_analysis] Using R library: {os.environ['MIRDEEP_R_LIB']}")
 
+    # ---- External tools: resolved once, overridable with --rscript/--emapper ----
+    # emapper.py is only needed on the build-from-proteins path, so requiring it
+    # unconditionally would break enrichment against an existing OrgDb.
+    required = ["emapper", "rscript"] if build_orgdb else ["rscript"]
+    tools = resolve_tools(args, required=required)
+
     # ---- 3. Build orgdb if requested ----
     if build_orgdb:
-        # Check external tools: emapper.py, Rscript
-        tools_ok, missing = check_external_tools({'emapper.py': None, 'Rscript': None})
-        if not tools_ok:
-            sys.exit("Error: missing required external dependencies (emapper.py, Rscript).")
-
         protein_fasta = Path(args.protein)
         if not protein_fasta.is_file():
             sys.exit(f"Protein FASTA file not found: {protein_fasta}")
@@ -143,12 +145,12 @@ def run(args):
             eggnog_data = Path(args.EGGNOG_DATA_DIR)
             if not eggnog_data.is_dir():
                 sys.exit(f"EGGNOG_DATA_DIR not found: {eggnog_data}")
-            cmd = (f"emapper.py --data_dir {shq(eggnog_data)} --cpu {args.threads} "
+            cmd = (f"{shq(tools['emapper'])} --data_dir {shq(eggnog_data)} --cpu {args.threads} "
                    f"-m diamond --override --dbmem "
                    f"-d euk --tax_scope Viridiplantae -i {shq(protein_clean)} "
                    f"-o {shq(emapper_output_base)}")
         else:
-            cmd = (f"emapper.py --cpu {args.threads} -m diamond --override --dbmem "
+            cmd = (f"{shq(tools['emapper'])} --cpu {args.threads} -m diamond --override --dbmem "
                    f"-d euk --tax_scope Viridiplantae -i {shq(protein_clean)} "
                    f"-o {shq(emapper_output_base)}")
         subprocess.run(cmd, shell=True, check=True)
@@ -165,7 +167,7 @@ def run(args):
         # ---- 3d. Build OrgDb and pathway files ----
         build_script = scripts_dir / "build_orgdb.R"
         orgdb_outdir = emapper_output_base
-        cmd = (f"Rscript {shq(build_script)} -i {shq(go_annot)} "
+        cmd = (f"{shq(tools['rscript'])} {shq(build_script)} -i {shq(go_annot)} "
                f"--kojson {shq(kojson_file)} -o {shq(orgdb_outdir)}")
         subprocess.run(cmd, shell=True, check=True)
 
@@ -189,7 +191,7 @@ def run(args):
         if not gene_file.is_file():
             sys.exit(f"Gene file not found: {gene_file}")
         step_status = run_enrichment_step(
-            f"Rscript {shq(enrich_script)} -i {shq(orgdb_path)} -f {shq(pathway_dir)} "
+            f"{shq(tools['rscript'])} {shq(enrich_script)} -i {shq(orgdb_path)} -f {shq(pathway_dir)} "
             f"-g {shq(gene_file)} --goterm 10 -o {shq(output_dir)}",
             "GO/KEGG enrichment (gene list)")
     else:
@@ -206,7 +208,7 @@ def run(args):
         if args.chord:
             chord_script = scripts_dir / "miRNA_chord_type2.R"
             subprocess.run(
-                f"Rscript {shq(chord_script)} -i {shq(target_file)} "
+                f"{shq(tools['rscript'])} {shq(chord_script)} -i {shq(target_file)} "
                 f"--orgdb {shq(orgdb_path)} -f {shq(pathway_dir)} -o {shq(output_dir)}",
                 shell=True, check=True
             )
