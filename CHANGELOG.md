@@ -8,6 +8,78 @@ Release tags follow the scheme `v<version>` (source, used by the conda recipe) a
 Releases before 3.1.6c are listed on the
 [GitHub Releases page](https://github.com/YangXZ-lab/mirdeep-p3/releases).
 
+## [Unreleased] - 3.1.8a
+
+3.1.8a turns the identification pipeline into a declared list of stages and gives
+every run a machine-readable record. The science is unchanged: on the mini dataset
+the five key outputs are byte-identical to 3.1.7c (see Validation).
+
+### Added
+
+- **Declarative stage runner** (`src/commands/stage_runner.py`, new). The fifteen
+  inline steps of `identification` are now twelve `Stage` objects (id, name,
+  artifacts, run). Each stage is timed, its artifacts are recorded in the manifest,
+  and "empty result" is expressed as `raise StageEmpty(reason)` instead of a special
+  return value, so the `ok / empty / failed` semantics of 3.1.7c are preserved
+  verbatim (the six original reason strings are unchanged).
+
+- **`--resume` for identification.** A stage is skipped when the recorded manifest
+  still matches (same version, parameters, genome, input fingerprint and index) and
+  every artifact of that stage is present and non-empty. Changed inputs invalidate
+  the manifest and the sample runs from the start. `--clean` is ignored while
+  resuming, because `temp/` holds the intermediates resuming depends on.
+
+- **Run manifest.** `<out>/<prefix>/<prefix>.run.json` records schema version,
+  software version, parameters, tool versions (`bowtie`, `bowtie-build`, `RNAfold`,
+  `samtools`, `trim_galore`), input fingerprint (size, mtime, md5), genome
+  fingerprint, and per-stage status, artifacts and duration.
+  `<out>/mirdp3-identification-<time>.manifest.json` summarises the batch (one entry
+  per sample). Both are written atomically (`.part` + `os.replace`).
+
+- **`analysis` smoke test in `test.sh`**: `Stat` on the annotation output plus
+  `Differential_expression` on a bundled 180-miRNA, six-sample fixture
+  (`tests/data/analysis_mini.count`, `tests/data/analysis_mini.exp`). The DE part is
+  invoked through its `DE` alias on purpose, so the alias fix below stays covered.
+  New exit code `6`.
+
+### Fixed
+
+- **`analysis DE` / `analysis FA` aliases did nothing**
+  (`src/commands/analysis/__init__.py`). The subparsers are registered with aliases,
+  but dispatch compared against the full name, so invoking an alias fell through to
+  the help branch and exited 1 (no error message, no results). The command name is
+  now normalised before dispatch.
+
+### Changed
+
+- `identification --clean` is silently disabled when `--resume` is used, with an
+  explicit log line, instead of deleting the tree that makes resuming possible.
+
+### Validation
+
+Byte-identical outputs on the mini dataset (`tests/data/mini.fq` + `mini_genome.fasta`,
+`-t 12 -p 4`), comparing 3.1.7c and 3.1.8a:
+
+| Output | md5 |
+|---|---|
+| `mini_nr_predictions` | `3ed474325e0c0a3ff58f0ef738106229` |
+| `mini_nr_predictions.bed` | `e17fc655d0b05419a1ec21b16a14b996` |
+| `mini_filter_P_prediction` | `2e63d35040c892d3fc67797ba2bab877` |
+| `mini.processed.fa` | `760c9775cc6acdf82bdc4ef4184743c7` |
+| `mini.total_reads` | `2f3610f0470b89e45076bbfcc89dd538` |
+
+Resume behaviour (mini dataset):
+
+| Scenario | Result |
+|---|---|
+| `--resume` on an unchanged run | 12/12 stages `[resume] ... skip`, seconds, outputs unchanged |
+| `--resume` after deleting `mini_nr_predictions.bed` | 11 skipped, `4.15` re-ran, rebuilt bed md5 matches |
+| edited manifest signature | `input or parameters changed, not resuming`, full re-run |
+
+`./test.sh -t 12 -k` (with `Rscript` present): identification, annotation, target
+prediction (psrna 120 rows deterministic, ssearch 112 rows), `Stat` (4 figures) and
+`Differential_expression` (180 miRNAs, DEG lists written) — `ALL TESTS PASSED`, exit 0.
+
 ## [Unreleased] - 3.1.7c
 
 3.1.7c is a maintenance release: it closes the entries of the issue ledger that were

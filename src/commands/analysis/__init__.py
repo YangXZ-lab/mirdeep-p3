@@ -73,17 +73,24 @@ def main(argv, project_root=None):
     args = parser.parse_args(argv)
     args.project_root = project_root   # 传递给子命令
 
-    if args.analysis_command == "TFBS":
+    # A subparser reached through an alias reports the alias itself in
+    # analysis_command ("DE", "FA"), so normalise the name before dispatching;
+    # otherwise the alias falls through to the help branch and exits 1.
+    command = {"DE": "Differential_expression",
+               "FA": "Functional_analysis"}.get(args.analysis_command,
+                                                args.analysis_command)
+
+    if command == "TFBS":
         tfbs.run(args)
-    elif args.analysis_command == "Target_finder":
+    elif command == "Target_finder":
         target_finder.run(args)
-    elif args.analysis_command == "Differential_expression":
+    elif command == "Differential_expression":
         differential_expression.run(args)
-    elif args.analysis_command == "Functional_analysis":
+    elif command == "Functional_analysis":
         functional_analysis.run(args)
-    elif args.analysis_command == "Stat":
+    elif command == "Stat":
         stat.run(args)
-    elif args.analysis_command == "Onestep":
+    elif command == "Onestep":
         onestep.run(args)
     else:
         parser.print_help()

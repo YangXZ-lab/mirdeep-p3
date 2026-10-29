@@ -25,6 +25,16 @@ from utils.config import load_config
 from utils.dependencies import check_external_tools
 from utils.shellquote import shq
 from check_python_deps import check_python_deps
+from commands.stage_runner import (
+    RunManifest,
+    Stage,
+    StageEmpty,
+    digest,
+    file_fingerprint,
+    md5_file,
+    run_stages,
+)
+from version import __version__ as MIRDP3_VERSION
 from datetime import datetime
 
 # ----------------------------------------------------------------------
@@ -351,6 +361,12 @@ def add_arguments(parser: argparse.ArgumentParser):
                         help="Also remove the auto-built genome index (<out>/index) when cleaning. "
                              "An index passed with -d is never touched.")
 
+    parser.add_argument("--resume", action="store_true",
+                        help="Resume an interrupted run: skip every stage whose declared "
+                             "outputs already exist and whose recorded run signature still "
+                             "matches (same input, genome, parameters and version). Implies "
+                             "keeping temp/, so --clean is ignored when resuming.")
+
     # Switches
     parser.add_argument("--reads_clean", dest="reads_clean", action="store_true", default=True,
                         help="Enable read cleaning (default on)")
@@ -644,250 +660,490 @@ def _write_empty_results(out_prefix: Path, prefix: str, log_file: Path, reason: 
             target.touch()
 
 
-def run_pipeline_for_input(args, input_file: Path, prefix: str, output_root: Path,
-                           genome: Path, genome_index: Path, log_file: Path):
-    temp_dir = output_root / prefix / "temp"
-    log_dir = log_file.parent
-    log_dir.mkdir(parents=True, exist_ok=True)
+def _log_line(log_file: Path, text: str) -> None:
+    """Append one line to the pipeline log."""
+    with open(log_file, 'a') as lf:
+        lf.write(text if text.endswith("\n") else text + "\n")
 
-    out_prefix = output_root / prefix
-    out_prefix.mkdir(parents=True, exist_ok=True)
-    temp_dir.mkdir(parents=True, exist_ok=True)
 
-    # local shortcuts
+class SampleContext:
+    """Everything one sample's stages need: resolved parameters and paths."""
+
+    def __init__(self, args, input_file: Path, prefix: str, output_root: Path,
+                 genome: Path, genome_index: Path, log_file: Path):
+        self.args = args
+        self.input_file = Path(input_file)
+        self.prefix = prefix
+        self.output_root = Path(output_root)
+        self.genome = Path(genome)
+        self.genome_index = Path(genome_index)
+        self.log_file = Path(log_file)
+        self.project_root = Path(args.project_root)
+        self.out_prefix = self.output_root / prefix
+        self.temp_dir = self.out_prefix / "temp"
+
+        self.threads = args.threads
+        self.min_len = args.min_len
+        self.max_len = args.max_len
+        self.rpm_threshold = args.rpm_threshold
+        self.max_mappings = args.max_mappings
+        self.pre_length = args.pre_length
+        self.trim_galore = getattr(args, 'trim_galore', None) or 'trim_galore'
+        self.bowtie = getattr(args, 'bowtie', None) or 'bowtie'
+        self.bowtie_build = getattr(args, 'bowtie_build', None) or 'bowtie-build'
+        self.RNAfold = getattr(args, 'RNAfold', None) or 'RNAfold'
+        self.samtools = getattr(args, 'samtools', None) or 'samtools'
+        self.py_exe = sys.executable
+
+        src = self.project_root / "src"
+        self.preprocess_script = src / "preprocess_files.py"
+        self.preprocess_reads_script = src / "preprocess_reads.py"
+        self.convert_script = src / "convert_bowtie_to_blast.py"
+        self.filter_script = src / "filter_alignments.py"
+        self.excise_script = src / "excise_candidate.py"
+        self.mod_mirdp_script = src / "mod_miRDP.py"
+        self.rm_script = src / "mod_rm_redundant_meet_plant.py"
+        self.bed_script = src / "convert_to_bed.py"
+
+        self.work_file = self.input_file
+        self.seq_type = getattr(args, 'type', None)
+        self.is_fasta = False
+        self.is_large_index = False
+
+    # -- setup ---------------------------------------------------------
+    def prepare(self) -> None:
+        """Decompress the input (idempotent) and decide FASTA vs FASTQ."""
+        self.out_prefix.mkdir(parents=True, exist_ok=True)
+        self.temp_dir.mkdir(parents=True, exist_ok=True)
+        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+        self.work_file = decompress_file(self.input_file, self.temp_dir)
+        self.seq_type = self.args.type or auto_detect_type(self.work_file)
+        self.is_fasta = self.seq_type in ('fasta', 'fa')
+        self.is_large_index = bool(list(
+            self.genome_index.parent.glob(self.genome_index.name + "*.ebwtl")))
+
+    # -- artifact paths (declared by the stages, consulted by --resume) --
+    def processed_reads(self) -> Path:
+        """The read file the ncRNA alignment stage consumes."""
+        if self.is_fasta:
+            return self.out_prefix / (self.prefix + ".processed.fa")
+        if self.args.reads_clean:
+            return self.temp_dir / (self.prefix + "_trimmed.processed.fa")
+        return self.temp_dir / (Path(self.work_file).stem + ".processed.fa")
+
+    def filtered_reads(self) -> Path:
+        """Reads left after the ncRNA screen (before the genome-wide filter)."""
+        return self.temp_dir / (self.prefix + ".processed.fa")
+
+    def temp_file(self, name: str) -> Path:
+        return self.temp_dir / name
+
+    def out_file(self, name: str) -> Path:
+        return self.out_prefix / name
+
+    def manifest_path(self) -> Path:
+        return self.out_prefix / (self.prefix + ".run.json")
+
+    def large_flag(self) -> str:
+        """Literal bowtie flag; must stay unquoted so it expands into its own word."""
+        return " --large-index" if self.is_large_index else ""
+
+
+# ----------------------------------------------------------------------
+# Stage bodies.  Each one performs exactly the work the previous straight-line
+# implementation did for that section, and raises StageEmpty (instead of
+# returning early) when the sample legitimately has no candidate.
+# ----------------------------------------------------------------------
+def _stage_preprocess(ctx: SampleContext) -> None:
     null = subprocess.DEVNULL
-    py_exe = sys.executable
-    threads = args.threads
-    min_len = args.min_len
-    max_len = args.max_len
-    rpm_threshold = args.rpm_threshold
-    max_mappings = args.max_mappings
-    pre_length = args.pre_length
-    trim_galore = getattr(args, 'trim_galore', None) or 'trim_galore'
-    bowtie = getattr(args, 'bowtie', None) or 'bowtie'
-    bowtie_build = getattr(args, 'bowtie_build', None) or 'bowtie-build'
-    RNAfold = getattr(args, 'RNAfold', None) or 'RNAfold'
-    samtools = getattr(args, 'samtools', None) or 'samtools'
-    bedtools = getattr(args, 'bedtools', None) or 'bedtools'
+    if ctx.is_fasta:
+        processed_fa = ctx.processed_reads()
+        shutil.copy2(ctx.work_file, processed_fa)
+        _log_line(ctx.log_file,
+                  f"[info] FASTA input: copied {ctx.work_file.name} to {processed_fa}")
+        return
 
-    # Decompress if needed
-    work_file = decompress_file(input_file, temp_dir)
-    seq_type = args.type or auto_detect_type(work_file)
-    is_fasta = seq_type in ('fasta', 'fa')
-
-    # ---- 4.4 Read cleaning & 4.5 Preprocess / Copy ----
-    if is_fasta:
-        processed_fa = out_prefix / f"{prefix}.processed.fa"
-        shutil.copy2(work_file, processed_fa)
-        with open(log_file, 'a') as lf:
-            lf.write(f"[info] FASTA input: copied {work_file.name} to {processed_fa}\n")
-    else:
-        if args.reads_clean:
-            # 使用 --basename 固定输出文件名，避免因输入文件名复杂导致找不到 trimmed 文件
-            cmd = (f"{shq(trim_galore)} --small_rna --length {min_len} "
-                   f"--max_length {max_len} "
-                   f"--dont_gzip --suppress_warn -j 8 --basename {shq(prefix)} "
-                   f"-o {shq(out_prefix)} {shq(work_file)}")
-            subprocess.run(cmd, shell=True, check=True,
-                           stdout=null, stderr=open(log_file, 'a'))
-            trimmed_file = out_prefix / f"{prefix}_trimmed.fq"
-            if not trimmed_file.exists():
-                raise RuntimeError(f"trimmed file not found: {trimmed_file}")
-            if _is_empty_file(trimmed_file):
-                _write_empty_results(out_prefix, prefix, log_file,
-                                     "no read survived read cleaning")
-                return PIPELINE_EMPTY, "no read survived read cleaning"
-        else:
-            trimmed_file = work_file
-
-        processed_fa = temp_dir / f"{Path(trimmed_file).stem}.processed.fa"
-        preprocess_script = args.project_root / "src" / "preprocess_files.py"
-        cmd = (f"{shq(py_exe)} {shq(preprocess_script)} -i {shq(trimmed_file)} "
-               f"-o {shq(temp_dir)}")
+    if ctx.args.reads_clean:
+        # --basename pins the output name, so a complex input name cannot hide it
+        cmd = (f"{shq(ctx.trim_galore)} --small_rna --length {ctx.min_len} "
+               f"--max_length {ctx.max_len} "
+               f"--dont_gzip --suppress_warn -j 8 --basename {shq(ctx.prefix)} "
+               f"-o {shq(ctx.out_prefix)} {shq(ctx.work_file)}")
         subprocess.run(cmd, shell=True, check=True,
-                       stdout=null, stderr=open(log_file, 'a'))
-        if not processed_fa.exists():
-            raise RuntimeError(f"processed FASTA not created: {processed_fa}")
-        if _is_empty_file(processed_fa):
-            _write_empty_results(out_prefix, prefix, log_file,
-                                 "no read survived preprocessing")
-            return PIPELINE_EMPTY, "no read survived preprocessing"
+                       stdout=null, stderr=open(ctx.log_file, 'a'))
+        trimmed_file = ctx.out_file(ctx.prefix + "_trimmed.fq")
+        if not trimmed_file.exists():
+            raise RuntimeError(f"trimmed file not found: {trimmed_file}")
+        if _is_empty_file(trimmed_file):
+            raise StageEmpty("no read survived read cleaning")
+    else:
+        trimmed_file = ctx.work_file
 
-    # 4.6 Alignment to ncRNA databases
-    project_data = args.project_root / "data"
+    processed_fa = ctx.processed_reads()
+    cmd = (f"{shq(ctx.py_exe)} {shq(ctx.preprocess_script)} -i {shq(trimmed_file)} "
+           f"-o {shq(ctx.temp_dir)}")
+    subprocess.run(cmd, shell=True, check=True,
+                   stdout=null, stderr=open(ctx.log_file, 'a'))
+    if not processed_fa.exists():
+        raise RuntimeError(f"processed FASTA not created: {processed_fa}")
+    if _is_empty_file(processed_fa):
+        raise StageEmpty("no read survived preprocessing")
+
+
+def _stage_ncrna_alignment(ctx: SampleContext) -> None:
+    project_data = ctx.project_root / "data"
     rfam_index = project_data / "index" / "rfam_index"
     mature_index = project_data / "index" / "mature_index"
-    rfam_aln = temp_dir / "rfam_reads.aln"
-    mature_aln = temp_dir / "mature_reads.aln"
-    subprocess.run(f"{shq(bowtie)} -v 0 {shq(rfam_index)} -f {shq(processed_fa)} "
-                   f"> {shq(rfam_aln)} 2>> {shq(log_file)}",
+    rfam_aln = ctx.temp_file("rfam_reads.aln")
+    mature_aln = ctx.temp_file("mature_reads.aln")
+    processed_fa = ctx.processed_reads()
+    subprocess.run(f"{shq(ctx.bowtie)} -v 0 {shq(rfam_index)} -f {shq(processed_fa)} "
+                   f"> {shq(rfam_aln)} 2>> {shq(ctx.log_file)}",
                    shell=True, check=True)
-    subprocess.run(f"{shq(bowtie)} -v 1 {shq(mature_index)} -f {shq(processed_fa)} "
-                   f"> {shq(mature_aln)} 2>> {shq(log_file)}",
+    subprocess.run(f"{shq(ctx.bowtie)} -v 1 {shq(mature_index)} -f {shq(processed_fa)} "
+                   f"> {shq(mature_aln)} 2>> {shq(ctx.log_file)}",
                    shell=True, check=True)
 
-    # 4.7 Filter ncRNA reads
-    all_fa = temp_dir / f"{prefix}.fa"
-    filtered_fa = temp_dir / f"{prefix}.processed.fa"
-    total_reads_file = out_prefix / f"{prefix}.total_reads"
-    preproc_reads_script = args.project_root / "src" / "preprocess_reads.py"
-    cmd = (f"{shq(py_exe)} {shq(preproc_reads_script)} {shq(processed_fa)} "
-           f"{shq(rfam_aln)} {shq(mature_aln)} {rpm_threshold} "
+
+def _stage_ncrna_filter(ctx: SampleContext) -> None:
+    all_fa = ctx.temp_file(ctx.prefix + ".fa")
+    filtered_fa = ctx.filtered_reads()
+    total_reads_file = ctx.out_file(ctx.prefix + ".total_reads")
+    cmd = (f"{shq(ctx.py_exe)} {shq(ctx.preprocess_reads_script)} "
+           f"{shq(ctx.processed_reads())} "
+           f"{shq(ctx.temp_file('rfam_reads.aln'))} "
+           f"{shq(ctx.temp_file('mature_reads.aln'))} {ctx.rpm_threshold} "
            f"{shq(all_fa)} {shq(filtered_fa)} {shq(total_reads_file)}")
     subprocess.run(cmd, shell=True, check=True,
-                   stdout=null, stderr=open(log_file, 'a'))
+                   stdout=subprocess.DEVNULL, stderr=open(ctx.log_file, 'a'))
 
-    # 4.8 Map to genome (use shared genome index)
-    is_large = bool(list(Path(genome_index).parent.glob(Path(genome_index).name + "*.ebwtl")))
-    large_flag = " --large-index" if is_large else ""
-    processed_aln = temp_dir / f"{prefix}-processed.aln"
-    # large_flag is a literal fragment (" --large-index" or ""), not a path: it must
-    # stay unquoted so it expands into its own word.
-    subprocess.run(f"{shq(bowtie)} -a -v 0{large_flag} {shq(genome_index)} "
-                   f"-f {shq(filtered_fa)} > {shq(processed_aln)} 2>> {shq(log_file)}",
+
+def _stage_genome_map(ctx: SampleContext) -> None:
+    aln = ctx.temp_file(ctx.prefix + "-processed.aln")
+    subprocess.run(f"{shq(ctx.bowtie)} -a -v 0{ctx.large_flag()} {shq(ctx.genome_index)} "
+                   f"-f {shq(ctx.filtered_reads())} > {shq(aln)} "
+                   f"2>> {shq(ctx.log_file)}",
                    shell=True, check=True)
 
-    # 4.9 Convert to BST and filter
-    convert_script = args.project_root / "src" / "convert_bowtie_to_blast.py"
-    filter_script = args.project_root / "src" / "filter_alignments.py"
-    bst_file = temp_dir / f"{prefix}-processed.bst"
-    subprocess.run(f"{shq(py_exe)} {shq(convert_script)} {shq(processed_aln)} "
-                   f"{shq(all_fa)} {shq(genome)} -o {shq(bst_file)} "
-                   f">> {shq(log_file)} 2>&1", shell=True, check=True)
-    filter_bst = temp_dir / f"{prefix}-processed-filter.bst"
-    subprocess.run(f"{shq(py_exe)} {shq(filter_script)} {shq(bst_file)} "
-                   f"-c {max_mappings} -o {shq(filter_bst)} "
-                   f">> {shq(log_file)} 2>&1", shell=True, check=True)
 
-    # No read survived the ncRNA / genome filters -> nothing to predict.
+def _stage_bst_filter(ctx: SampleContext) -> None:
+    bst = ctx.temp_file(ctx.prefix + "-processed.bst")
+    filter_bst = ctx.temp_file(ctx.prefix + "-processed-filter.bst")
+    subprocess.run(f"{shq(ctx.py_exe)} {shq(ctx.convert_script)} "
+                   f"{shq(ctx.temp_file(ctx.prefix + '-processed.aln'))} "
+                   f"{shq(ctx.temp_file(ctx.prefix + '.fa'))} {shq(ctx.genome)} "
+                   f"-o {shq(bst)} >> {shq(ctx.log_file)} 2>&1",
+                   shell=True, check=True)
+    subprocess.run(f"{shq(ctx.py_exe)} {shq(ctx.filter_script)} {shq(bst)} "
+                   f"-c {ctx.max_mappings} -o {shq(filter_bst)} "
+                   f">> {shq(ctx.log_file)} 2>&1", shell=True, check=True)
     if _is_empty_file(filter_bst):
-        _write_empty_results(out_prefix, prefix, log_file,
-                             "no candidate reads after alignment filtering")
-        return PIPELINE_EMPTY, "no candidate reads after alignment filtering"
+        raise StageEmpty("no candidate reads after alignment filtering")
 
-    # 4.10 Excise precursors and fold
-    excise_script = args.project_root / "src" / "excise_candidate.py"
-    precursors_fa = temp_dir / f"{prefix}_precursors.fa"
-    subprocess.run(f"{shq(py_exe)} {shq(excise_script)} {shq(genome)} "
-                   f"{shq(filter_bst)} -l {pre_length} -o {shq(precursors_fa)} "
-                   f">> {shq(log_file)} 2>&1", shell=True, check=True)
+
+def _stage_excise_fold(ctx: SampleContext) -> None:
+    precursors_fa = ctx.temp_file(ctx.prefix + "_precursors.fa")
+    subprocess.run(f"{shq(ctx.py_exe)} {shq(ctx.excise_script)} {shq(ctx.genome)} "
+                   f"{shq(ctx.temp_file(ctx.prefix + '-processed-filter.bst'))} "
+                   f"-l {ctx.pre_length} -o {shq(precursors_fa)} "
+                   f">> {shq(ctx.log_file)} 2>&1", shell=True, check=True)
     if _is_empty_file(precursors_fa):
-        _write_empty_results(out_prefix, prefix, log_file,
-                             "no precursor sequence could be excised")
-        return PIPELINE_EMPTY, "no precursor sequence could be excised"
-    precursors_struc = temp_dir / f"{prefix}_precursors.struc"
-    subprocess.run(f"{shq(RNAfold)} --noPS -j{threads} {shq(precursors_fa)} "
-                   f"> {shq(precursors_struc)} 2>> {shq(log_file)}",
+        raise StageEmpty("no precursor sequence could be excised")
+    precursors_struc = ctx.temp_file(ctx.prefix + "_precursors.struc")
+    subprocess.run(f"{shq(ctx.RNAfold)} --noPS -j{ctx.threads} {shq(precursors_fa)} "
+                   f"> {shq(precursors_struc)} 2>> {shq(ctx.log_file)}",
                    shell=True, check=True)
 
-    # 4.11 Extract reads with no ncRNA
-    all_aln = temp_dir / f"{prefix}.aln"
-    subprocess.run(f"{shq(bowtie)} -a -v 0{large_flag} {shq(genome_index)} "
-                   f"-f {shq(all_fa)} > {shq(all_aln)} 2>> {shq(log_file)}",
-                   shell=True, check=True)
-    all_bst = temp_dir / f"{prefix}.bst"
-    subprocess.run(f"{shq(py_exe)} {shq(convert_script)} {shq(all_aln)} {shq(all_fa)} "
-                   f"{shq(genome)} -o {shq(all_bst)} >> {shq(log_file)} 2>&1",
-                   shell=True, check=True)
-    all_filter_bst = temp_dir / f"{prefix}-filter.bst"
-    subprocess.run(f"{shq(py_exe)} {shq(filter_script)} {shq(all_bst)} "
-                   f"-c {max_mappings} -o {shq(all_filter_bst)} >> {shq(log_file)} 2>&1",
-                   shell=True, check=True)
-    filtered_fa_final = temp_dir / f"{prefix}_filtered.fa"
-    subprocess.run(f"{shq(py_exe)} {shq(filter_script)} {shq(all_filter_bst)} "
-                   f"-b {shq(all_fa)} -o {shq(filtered_fa_final)} >> {shq(log_file)} 2>&1",
-                   shell=True, check=True)
 
-    # 4.12 Prepare reads signature file
-    prec_index = temp_dir / f"{prefix}_precursors"
-    subprocess.run(f"{shq(bowtie_build)} -f {shq(precursors_fa)} {shq(prec_index)} "
-                   f">> {shq(log_file)} 2>&1",
+def _stage_genome_map_all(ctx: SampleContext) -> None:
+    """Map *all* reads (ncRNA included), then keep the ones with no ncRNA hit."""
+    all_fa = ctx.temp_file(ctx.prefix + ".fa")
+    all_aln = ctx.temp_file(ctx.prefix + ".aln")
+    all_bst = ctx.temp_file(ctx.prefix + ".bst")
+    all_filter_bst = ctx.temp_file(ctx.prefix + "-filter.bst")
+    filtered_fa_final = ctx.temp_file(ctx.prefix + "_filtered.fa")
+    subprocess.run(f"{shq(ctx.bowtie)} -a -v 0{ctx.large_flag()} {shq(ctx.genome_index)} "
+                   f"-f {shq(all_fa)} > {shq(all_aln)} 2>> {shq(ctx.log_file)}",
                    shell=True, check=True)
-    prec_aln = temp_dir / f"{prefix}_precursors.aln"
-    subprocess.run(f"{shq(bowtie)} -a -v 0 {shq(prec_index)} "
-                   f"-f {shq(filtered_fa_final)} > {shq(prec_aln)} 2>> {shq(log_file)}",
+    subprocess.run(f"{shq(ctx.py_exe)} {shq(ctx.convert_script)} {shq(all_aln)} "
+                   f"{shq(all_fa)} {shq(ctx.genome)} -o {shq(all_bst)} "
+                   f">> {shq(ctx.log_file)} 2>&1", shell=True, check=True)
+    subprocess.run(f"{shq(ctx.py_exe)} {shq(ctx.filter_script)} {shq(all_bst)} "
+                   f"-c {ctx.max_mappings} -o {shq(all_filter_bst)} "
+                   f">> {shq(ctx.log_file)} 2>&1", shell=True, check=True)
+    subprocess.run(f"{shq(ctx.py_exe)} {shq(ctx.filter_script)} {shq(all_filter_bst)} "
+                   f"-b {shq(all_fa)} -o {shq(filtered_fa_final)} "
+                   f">> {shq(ctx.log_file)} 2>&1", shell=True, check=True)
+
+
+def _stage_signatures(ctx: SampleContext) -> None:
+    precursors_fa = ctx.temp_file(ctx.prefix + "_precursors.fa")
+    prec_index = ctx.temp_file(ctx.prefix + "_precursors")
+    prec_aln = ctx.temp_file(ctx.prefix + "_precursors.aln")
+    prec_bst = ctx.temp_file(ctx.prefix + "_precursors.bst")
+    signatures_file = ctx.temp_file(ctx.prefix + "_signatures")
+    subprocess.run(f"{shq(ctx.bowtie_build)} -f {shq(precursors_fa)} {shq(prec_index)} "
+                   f">> {shq(ctx.log_file)} 2>&1", shell=True, check=True)
+    subprocess.run(f"{shq(ctx.bowtie)} -a -v 0 {shq(prec_index)} "
+                   f"-f {shq(ctx.temp_file(ctx.prefix + '_filtered.fa'))} "
+                   f"> {shq(prec_aln)} 2>> {shq(ctx.log_file)}",
                    shell=True, check=True)
-    prec_bst = temp_dir / f"{prefix}_precursors.bst"
-    subprocess.run(f"{shq(py_exe)} {shq(convert_script)} {shq(prec_aln)} "
-                   f"{shq(filtered_fa_final)} {shq(precursors_fa)} -o {shq(prec_bst)} "
-                   f">> {shq(log_file)} 2>&1",
-                   shell=True, check=True)
-    signatures_file = temp_dir / f"{prefix}_signatures"
+    subprocess.run(f"{shq(ctx.py_exe)} {shq(ctx.convert_script)} {shq(prec_aln)} "
+                   f"{shq(ctx.temp_file(ctx.prefix + '_filtered.fa'))} "
+                   f"{shq(precursors_fa)} -o {shq(prec_bst)} "
+                   f">> {shq(ctx.log_file)} 2>&1", shell=True, check=True)
     subprocess.run(f"sort +3 -25 {shq(prec_bst)} > {shq(signatures_file)} "
-                   f"2>> {shq(log_file)}",
-                   shell=True, check=True)
+                   f"2>> {shq(ctx.log_file)}", shell=True, check=True)
 
-    # 4.13 miRNA prediction
-    mod_mirdp_script = args.project_root / "src" / "mod_miRDP.py"
-    predictions_file = temp_dir / f"{prefix}_predictions"
-    subprocess.run(f"{shq(py_exe)} {shq(mod_mirdp_script)} {shq(signatures_file)} "
-                   f"{shq(precursors_struc)} -o {shq(predictions_file)} "
-                   f">> {shq(log_file)} 2>&1",
+
+def _stage_prediction(ctx: SampleContext) -> None:
+    predictions_file = ctx.temp_file(ctx.prefix + "_predictions")
+    subprocess.run(f"{shq(ctx.py_exe)} {shq(ctx.mod_mirdp_script)} "
+                   f"{shq(ctx.temp_file(ctx.prefix + '_signatures'))} "
+                   f"{shq(ctx.temp_file(ctx.prefix + '_precursors.struc'))} "
+                   f"-o {shq(predictions_file)} >> {shq(ctx.log_file)} 2>&1",
                    shell=True, check=True)
     if _is_empty_file(predictions_file):
-        _write_empty_results(out_prefix, prefix, log_file,
-                             "miRDP2 predicted no miRNA candidate")
-        return PIPELINE_EMPTY, "miRDP2 predicted no miRNA candidate"
+        raise StageEmpty("miRDP2 predicted no miRNA candidate")
 
-    # 4.14 Plant-specific filtering
-    fai_file = temp_dir / f"{genome.name}.fai"
-    chrom_length_file = out_prefix / "chr_length"
-    subprocess.run(f"{shq(samtools)} faidx {shq(genome)} --fai-idx {shq(fai_file)} "
-                   f"> /dev/null 2>> {shq(log_file)}",
+
+def _stage_plant_filter(ctx: SampleContext) -> None:
+    fai_file = ctx.temp_file(ctx.genome.name + ".fai")
+    chrom_length_file = ctx.out_file("chr_length")
+    subprocess.run(f"{shq(ctx.samtools)} faidx {shq(ctx.genome)} --fai-idx {shq(fai_file)} "
+                   f"> /dev/null 2>> {shq(ctx.log_file)}",
                    shell=True, check=True)
-    with open(log_file, 'a') as lf:
-        lf.write(f"Extracting chromosome lengths...\n")
+    _log_line(ctx.log_file, "Extracting chromosome lengths...")
     with open(fai_file) as fin, open(chrom_length_file, 'w') as fout:
         for line in fin:
             parts = line.split('\t')
             if len(parts) >= 2:
                 fout.write(f"{parts[0]}\t{parts[1]}\n")
-    nr_pred = out_prefix / f"{prefix}_nr_predictions"
-    filter_pred = out_prefix / f"{prefix}_filter_P_prediction"
-    rm_script = args.project_root / "src" / "mod_rm_redundant_meet_plant.py"
-    rm_cmd = (f"{shq(py_exe)} {shq(rm_script)} {shq(chrom_length_file)} "
-              f"{shq(precursors_fa)} {shq(predictions_file)} {shq(total_reads_file)} "
-              f"-n {shq(nr_pred)} -f {shq(filter_pred)} >> {shq(log_file)} 2>&1")
+
+    nr_pred = ctx.out_file(ctx.prefix + "_nr_predictions")
+    filter_pred = ctx.out_file(ctx.prefix + "_filter_P_prediction")
+    rm_cmd = (f"{shq(ctx.py_exe)} {shq(ctx.rm_script)} {shq(chrom_length_file)} "
+              f"{shq(ctx.temp_file(ctx.prefix + '_precursors.fa'))} "
+              f"{shq(ctx.temp_file(ctx.prefix + '_predictions'))} "
+              f"{shq(ctx.out_file(ctx.prefix + '.total_reads'))} "
+              f"-n {shq(nr_pred)} -f {shq(filter_pred)} >> {shq(ctx.log_file)} 2>&1")
     rm_rc = subprocess.run(rm_cmd, shell=True).returncode
     if rm_rc != 0:
-        # An empty result is handled below via the _is_empty_file() check; a
-        # non-zero exit here means the step itself failed (unreadable input file),
-        # so report it directly instead of a bare CalledProcessError.
+        # An empty result is detected below; a non-zero exit here means the step
+        # itself failed (unreadable input), so say so instead of raising an opaque
+        # CalledProcessError.
         raise RuntimeError(
-            f"plant-specific filtering failed (exit {rm_rc}); see {log_file}")
+            f"plant-specific filtering failed (exit {rm_rc}); see {ctx.log_file}")
     if _is_empty_file(nr_pred):
-        _write_empty_results(out_prefix, prefix, log_file,
-                             "no candidate passed the plant-specific filter")
-        return PIPELINE_EMPTY, "no candidate passed the plant-specific filter"
+        raise StageEmpty("no candidate passed the plant-specific filter")
 
-    # 4.15 Convert to BED
-    bed_script = args.project_root / "src" / "convert_to_bed.py"
-    bed_file = out_prefix / f"{prefix}_nr_predictions.bed"
-    subprocess.run(f"{shq(py_exe)} {shq(bed_script)} -i {shq(nr_pred)} "
-                   f"-o {shq(bed_file)} >> {shq(log_file)} 2>&1",
+
+def _stage_bed(ctx: SampleContext) -> None:
+    nr_pred = ctx.out_file(ctx.prefix + "_nr_predictions")
+    bed_file = ctx.out_file(ctx.prefix + "_nr_predictions.bed")
+    subprocess.run(f"{shq(ctx.py_exe)} {shq(ctx.bed_script)} -i {shq(nr_pred)} "
+                   f"-o {shq(bed_file)} >> {shq(ctx.log_file)} 2>&1",
                    shell=True, check=True)
-    
-    # Copy the filtered reads to the output directory for downstream use.
-    # The canonical name is "<prefix>.processed.fa": that is what annotation
-    # looks up via rglob("*.processed.fa") and what preprocess_files.py emits.
-    # A compatibility symlink keeps the legacy "<prefix>-processed.fa" spelling
-    # working for any external caller.
-    final_processed = temp_dir / f"{prefix}.processed.fa"
-    if final_processed.exists():
-        dest = out_prefix / f"{prefix}.processed.fa"
-        shutil.copy2(final_processed, dest)
-        with open(log_file, 'a') as lf:
-            lf.write(f"[info] Copied {final_processed} to {dest}\n")
-        legacy = out_prefix / f"{prefix}-processed.fa"
-        if not legacy.exists():
-            try:
-                legacy.symlink_to(dest.name)
-            except OSError as exc:
-                with open(log_file, 'a') as lf:
-                    lf.write(f"[warn] could not create compatibility symlink "
-                             f"{legacy}: {exc}\n")
 
+
+def _stage_finalize(ctx: SampleContext) -> None:
+    """Publish the filtered reads under the canonical name annotation looks for."""
+    final_processed = ctx.filtered_reads()
+    if not final_processed.exists():
+        return
+    dest = ctx.out_file(ctx.prefix + ".processed.fa")
+    shutil.copy2(final_processed, dest)
+    _log_line(ctx.log_file, f"[info] Copied {final_processed} to {dest}")
+    # A compatibility symlink keeps the legacy "<prefix>-processed.fa" spelling
+    # working for external callers; annotation accepts either name.
+    legacy = ctx.out_file(ctx.prefix + "-processed.fa")
+    if not legacy.exists():
+        try:
+            legacy.symlink_to(dest.name)
+        except OSError as exc:
+            _log_line(ctx.log_file,
+                      f"[warn] could not create compatibility symlink {legacy}: {exc}")
+
+
+# ----------------------------------------------------------------------
+# Stage table.  Order matters; artifacts drive both --resume and the manifest.
+# ----------------------------------------------------------------------
+def _preprocess_artifacts(ctx: SampleContext):
+    artifacts = []
+    if not ctx.is_fasta and ctx.args.reads_clean:
+        artifacts.append(ctx.out_file(ctx.prefix + "_trimmed.fq"))
+    artifacts.append(ctx.processed_reads())
+    return artifacts
+
+
+def _bowtie_index_artifacts(prefix: Path):
+    """The six files bowtie-build leaves behind, for either index format."""
+    suffixes = ('.1', '.2', '.3', '.4', '.rev.1', '.rev.2')
+    for ext in ('.ebwt', '.ebwtl'):
+        candidates = [Path(str(prefix) + s + ext) for s in suffixes]
+        if all(p.exists() for p in candidates):
+            return candidates
+    return [Path(str(prefix) + s + '.ebwt') for s in suffixes]
+
+
+def _signature_artifacts(ctx: SampleContext):
+    return (_bowtie_index_artifacts(ctx.temp_file(ctx.prefix + "_precursors"))
+            + [ctx.temp_file(ctx.prefix + "_precursors.aln"),
+               ctx.temp_file(ctx.prefix + "_precursors.bst"),
+               ctx.temp_file(ctx.prefix + "_signatures")])
+
+
+def build_stages(ctx: SampleContext):
+    """Return the ordered stage list for one sample."""
+    return [
+        Stage("4.4-4.5", "preprocess", _preprocess_artifacts, _stage_preprocess),
+        Stage("4.6", "ncrna-alignment",
+              lambda c: [c.temp_file("rfam_reads.aln"), c.temp_file("mature_reads.aln")],
+              _stage_ncrna_alignment),
+        Stage("4.7", "ncrna-filter",
+              lambda c: [c.temp_file(c.prefix + ".fa"), c.filtered_reads(),
+                         c.out_file(c.prefix + ".total_reads")],
+              _stage_ncrna_filter),
+        Stage("4.8", "genome-map",
+              lambda c: [c.temp_file(c.prefix + "-processed.aln")],
+              _stage_genome_map),
+        Stage("4.9", "bst-filter",
+              lambda c: [c.temp_file(c.prefix + "-processed.bst"),
+                         c.temp_file(c.prefix + "-processed-filter.bst")],
+              _stage_bst_filter),
+        Stage("4.10", "excise-fold",
+              lambda c: [c.temp_file(c.prefix + "_precursors.fa"),
+                         c.temp_file(c.prefix + "_precursors.struc")],
+              _stage_excise_fold),
+        Stage("4.11", "genome-map-all",
+              lambda c: [c.temp_file(c.prefix + ".aln"), c.temp_file(c.prefix + ".bst"),
+                         c.temp_file(c.prefix + "-filter.bst"), c.filtered_reads()],
+              _stage_genome_map_all),
+        Stage("4.12", "signatures", _signature_artifacts, _stage_signatures),
+        Stage("4.13", "prediction",
+              lambda c: [c.temp_file(c.prefix + "_predictions")],
+              _stage_prediction),
+        Stage("4.14", "plant-filter",
+              lambda c: [c.out_file("chr_length"),
+                         c.out_file(c.prefix + "_nr_predictions"),
+                         c.out_file(c.prefix + "_filter_P_prediction")],
+              _stage_plant_filter),
+        Stage("4.15", "bed",
+              lambda c: [c.out_file(c.prefix + "_nr_predictions.bed")],
+              _stage_bed),
+        Stage("4.16", "finalize",
+              lambda c: [c.out_file(c.prefix + ".processed.fa")],
+              _stage_finalize),
+    ]
+
+
+def _manifest_signature(ctx: SampleContext) -> str:
+    """Fingerprint of everything that would invalidate a resumed run."""
+    return digest({
+        "version": MIRDP3_VERSION,
+        "prefix": ctx.prefix,
+        "input": file_fingerprint(ctx.input_file),
+        "genome": file_fingerprint(ctx.genome),
+        "genome_index": str(ctx.genome_index),
+        "params": {
+            "type": ctx.seq_type,
+            "reads_clean": bool(ctx.args.reads_clean),
+            "min_len": ctx.min_len,
+            "max_len": ctx.max_len,
+            "rpm_threshold": ctx.rpm_threshold,
+            "max_mappings": ctx.max_mappings,
+            "pre_length": ctx.pre_length,
+        },
+    })
+
+
+def _manifest_params(ctx: SampleContext) -> Dict:
+    return {
+        "type": ctx.seq_type,
+        "reads_clean": bool(ctx.args.reads_clean),
+        "min_len": ctx.min_len,
+        "max_len": ctx.max_len,
+        "rpm_threshold": ctx.rpm_threshold,
+        "max_mappings": ctx.max_mappings,
+        "pre_length": ctx.pre_length,
+        "threads": ctx.threads,
+    }
+
+
+def run_pipeline_for_input(args, input_file: Path, prefix: str, output_root: Path,
+                           genome: Path, genome_index: Path, log_file: Path):
+    ctx = SampleContext(args, input_file, prefix, output_root, genome, genome_index, log_file)
+    ctx.prepare()
+
+    stages = build_stages(ctx)
+    resume = bool(getattr(args, 'resume', False))
+    signature = _manifest_signature(ctx)
+    manifest_file = ctx.manifest_path()
+
+    manifest = None
+    if resume and manifest_file.is_file():
+        try:
+            manifest = RunManifest.load(manifest_file)
+        except (OSError, ValueError) as exc:
+            _log_line(log_file, f"[resume] manifest unreadable ({exc}); starting from scratch")
+            manifest = None
+        if manifest is not None and not manifest.signature_matches(signature):
+            _log_line(log_file, "[resume] input/parameters changed -- starting from scratch")
+            print(f"  [resume] {prefix}: input or parameters changed, not resuming",
+                  flush=True)
+            manifest = None
+    if manifest is None:
+        manifest = RunManifest.create(
+            manifest_file,
+            tool="mirdeep-p3",
+            version=MIRDP3_VERSION,
+            step="identification",
+            prefix=prefix,
+            input_file=ctx.input_file,
+            genome=ctx.genome,
+            params=_manifest_params(ctx),
+            tools=getattr(args, 'tool_versions', {}) or {},
+            signature=signature,
+            input_md5=md5_file(ctx.input_file),
+        )
+        _log_line(log_file, f"[manifest] {manifest_file}")
+
+    try:
+        run_stages(stages, ctx, manifest, resume=resume, log_file=log_file)
+    except StageEmpty as exc:
+        _write_empty_results(ctx.out_prefix, prefix, log_file, exc.reason)
+        manifest.finish(PIPELINE_EMPTY, exc.reason)
+        return PIPELINE_EMPTY, exc.reason
+    except Exception as exc:
+        manifest.finish(PIPELINE_FAILED, f"{type(exc).__name__}: {exc}")
+        raise
+    manifest.finish(PIPELINE_OK, "")
     return PIPELINE_OK, ""
+
+
+def probe_tool_versions(args) -> Dict[str, str]:
+    """Record the version line of every external tool the pipeline may call."""
+    commands = {
+        'bowtie': [getattr(args, 'bowtie', None) or 'bowtie', '--version'],
+        'bowtie-build': [getattr(args, 'bowtie_build', None) or 'bowtie-build', '--version'],
+        'RNAfold': [getattr(args, 'RNAfold', None) or 'RNAfold', '--version'],
+        'samtools': [getattr(args, 'samtools', None) or 'samtools', '--version'],
+    }
+    if getattr(args, 'reads_clean', True):
+        commands['trim_galore'] = [getattr(args, 'trim_galore', None) or 'trim_galore',
+                                   '--version']
+    versions = {}
+    for name, cmd in commands.items():
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            versions[name] = "unavailable"
+            continue
+        text = (result.stdout or result.stderr or "").strip()
+        versions[name] = text.splitlines()[0].strip() if text else "unknown"
+    return versions
+
+
 
 def process_worker(args, input_file, prefix, root, genome, shared_genome_index, logf):
     """
@@ -969,6 +1225,14 @@ def run(args):
     if not all_ok:
         sys.exit("Error: missing required external dependencies.")
     check_python_deps()
+
+    # Record the external tool versions once per run; every sample manifest
+    # inherits them, so a result can be traced back to the binaries that made it.
+    args.tool_versions = probe_tool_versions(args)
+    if getattr(args, 'resume', False) and getattr(args, 'clean', False):
+        # Resuming relies on the intermediate files kept in temp/.
+        print("[resume] --clean ignored: temp/ is needed to resume.")
+        args.clean = False
 
     # ---- 2. Parameter resolution ----
     # Input files
@@ -1159,6 +1423,40 @@ def run(args):
             if index_dir.exists():
                 print(f"[clean-index] removing {index_dir}")
                 shutil.rmtree(index_dir)
+
+    # ---- 5c. Batch manifest ----
+    # One machine-readable record per batch, pointing at each sample manifest.
+    batch_manifest = output_root / f"mirdp3-identification-{timestamp}.manifest.json"
+    batch = RunManifest.create_batch(
+        batch_manifest,
+        tool="mirdeep-p3",
+        version=MIRDP3_VERSION,
+        step="identification",
+        params={
+            "threads": args.threads,
+            "progress": args.progress,
+            "genome": str(genome),
+            "genome_index": str(shared_genome_index),
+            "resume": bool(getattr(args, 'resume', False)),
+        },
+        tools=getattr(args, 'tool_versions', {}) or {},
+        signature=digest({"prefixes": list(prefixes),
+                          "genome": file_fingerprint(genome)}),
+        inputs=input_files,
+    )
+    for pref, status, message in outcomes:
+        batch.add_sample(pref, status, message,
+                         str(output_root / pref / (pref + ".run.json")))
+    if failed and (ok_all or empty):
+        batch_status = "partial"
+    elif failed:
+        batch_status = PIPELINE_FAILED
+    elif empty:
+        batch_status = PIPELINE_EMPTY
+    else:
+        batch_status = PIPELINE_OK
+    batch.finish(batch_status)
+    print(f"[manifest] {batch_manifest}")
 
     print("\nIdentification step completed successfully.")
 

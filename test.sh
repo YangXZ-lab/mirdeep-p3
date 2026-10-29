@@ -6,7 +6,8 @@
 # on a small Arabidopsis test dataset (tests/data/mini.fq + mini_genome.fasta).
 #
 # Usage:
-#   ./test.sh            # run full test (identification + annotation + target prediction)
+#   ./test.sh            # run full test (identification + annotation + target prediction
+#                        + analysis smoke)
 #   ./test.sh -q         # quiet mode (suppress pipeline stdout)
 #   ./test.sh -k         # keep test output (default: removed on success)
 #   ./test.sh -t 16      # use 16 threads (default: 8)
@@ -18,6 +19,7 @@
 #   3  identification failed
 #   4  annotation failed
 #   5  target prediction failed
+#   6  analysis smoke test failed (Stat / Differential_expression)
 # =============================================================================
 set -u
 
@@ -209,7 +211,62 @@ if [ -f "$TF_MATURE" ] && [ -f "$TF_CDS" ]; then
 else
     log "Target prediction fixture not found - skipping target prediction."
 fi
-# ---- 10. Cleanup -------------------------------------------------------------
+# ---- 10. Analysis smoke (Stat + Differential_expression) --------------------
+# The two analysis subcommands that need nothing beyond what the annotation step
+# already produced.  Skipped rather than failed when Rscript is absent: analysis
+# is R-based, and a Python-only environment must not turn the build red.
+if command -v Rscript >/dev/null 2>&1; then
+    log "Running analysis smoke test (Stat)..."
+    STAT_OUT="$OUT_DIR/analysis_stat"
+    if ! run_quiet "$ROOT/mirdeep-p3" analysis Stat \
+            -i "$ANNO_OUT/mirdp3-test-basic-info" \
+            -o "$STAT_OUT"; then
+        fail "analysis Stat failed (see log above)" 6
+    fi
+    for f in length_dist first_base_dist base_dist miRNA_family; do
+        [ -s "$STAT_OUT/$f.pdf" ] || fail "Stat output missing: $f.pdf" 6
+    done
+    log "Stat verified: 4 figures."
+
+    # The DE step rewrites the matrices it is given (filter_low_expression drops
+    # low-count miRNAs in place), so it always gets a private copy of the fixture.
+    DE_COUNT="$ROOT/tests/data/analysis_mini.count"
+    DE_EXP="$ROOT/tests/data/analysis_mini.exp"
+    if [ -f "$DE_COUNT" ] && [ -f "$DE_EXP" ]; then
+        log "Running analysis smoke test (Differential_expression)..."
+        DE_IN="$OUT_DIR/analysis_de_in"
+        DE_OUT="$OUT_DIR/analysis_de"
+        mkdir -p "$DE_IN"
+        cp "$DE_COUNT" "$DE_EXP" "$DE_IN/"
+        # Addressed through its alias on purpose: "DE" must reach the same module
+        # as the full name (a mis-dispatch used to print the help and exit 1).
+        if ! run_quiet "$ROOT/mirdeep-p3" analysis DE \
+                -c "$DE_IN/analysis_mini.count" \
+                -r "$DE_IN/analysis_mini.exp" \
+                --case1 3,4,5 \
+                --case2 6,7,8 \
+                --case1name mock \
+                --case2name treat \
+                -o "$DE_OUT"; then
+            fail "analysis Differential_expression failed (see log above)" 6
+        fi
+        DE_RES="$DE_OUT/mock_treat_res.txt"
+        for f in "$DE_RES" "$DE_OUT/mock_treat_up.txt" "$DE_OUT/mock_treat_down.txt" \
+                 "$DE_OUT/final_miRNA_expression.txt" "$DE_OUT/volcano_mock_treat.pdf"; do
+            [ -s "$f" ] || fail "Differential_expression output missing: $f" 6
+        done
+        DE_ROWS=$(( $(wc -l < "$DE_RES") - 1 ))
+        [ "$DE_ROWS" -ge 100 ] \
+            || fail "Differential_expression: expected >=100 miRNAs, got $DE_ROWS" 6
+        log "Differential expression verified: $DE_ROWS miRNAs tested, DEG lists written."
+    else
+        log "DE fixture not found - skipping Differential_expression."
+    fi
+else
+    log "Rscript not found - skipping the analysis smoke test."
+fi
+
+# ---- 11. Cleanup -------------------------------------------------------------
 if [ "$KEEP_OUTPUT" -eq 0 ]; then
     log "Removing test output (use -k to keep)..."
     rm -rf "$OUT_DIR"

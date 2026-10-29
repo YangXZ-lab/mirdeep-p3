@@ -189,6 +189,8 @@ mirdeep-p3 identification \
 | Path | Description |
 |---|---|
 | `output/mirdp3-identification-<time>.pipe` | Log for this task. |
+| `output/mirdp3-identification-<time>.manifest.json` | Batch run manifest: one entry per sample (status + per-sample manifest path). |
+| `output/<prefix>/<prefix>.run.json` | Per-sample run manifest: version, parameters, tool versions, input fingerprint, per-stage status and timings. |
 | `output/<prefix>/<prefix>.fq_trimming_report.txt` | trim_galore report. |
 | `output/<prefix>/<prefix>_identification.log` | Log for each step. |
 | `output/<prefix>/<prefix>.total_reads` | Total reads count. |
@@ -199,6 +201,8 @@ mirdeep-p3 identification \
   is omitted, the bowtie index is auto-built under the output/index directory.
 - **Skip steps**: `--no-reads_clean` skip the reads clean step.
 - **Clean up**: `--clean` deletes each sample's `temp/` after the run, while the bowtie index under `output/index` is kept. Add `--clean-index` to delete the index as well (ignored when the index came from `-d`).
+- **Resume an interrupted run**: `--resume` skips every stage whose artifacts are already on disk and whose record still matches the current inputs, parameters, genome and version. If any of them changed, the sample is re-run from the start instead of trusting stale files. `--clean` is ignored while resuming, because the intermediates under `temp/` are what makes resuming possible.
+- **Run record**: every sample writes `output/<prefix>/<prefix>.run.json` (version, parameters, tool versions, input fingerprint, per-stage status and duration), and the batch writes `output/mirdp3-identification-<time>.manifest.json`. Both are JSON and are written atomically, so a killed run never leaves a truncated file.
 
 ### miRNA annotation after identification
 ```bash
@@ -602,6 +606,7 @@ to `main` and on pull requests, covering three levels:
 | 1 | `smoke` | CLI boots, `-h`/`-v` render, all command modules import cleanly | seconds |
 | 2 | `e2e-identification` | End-to-end miRNA identification on a mini Arabidopsis dataset | minutes |
 | 3 | `e2e-annotation` | End-to-end annotation of the identification output | minutes |
+| 4 | `analysis` smoke | `Stat` + `Differential_expression` on a bundled 180-miRNA fixture | seconds |
 
 Badges:
 
@@ -612,8 +617,9 @@ Badges:
 ### Run the test locally (source install)
 
 A self-contained test script is provided — it downloads the optional
-index data if needed, runs identification + annotation on the bundled
-mini dataset, and verifies the outputs:
+index data if needed, then runs identification + annotation + target
+prediction + the analysis smoke test (Stat, Differential_expression) on
+the bundled mini datasets, and verifies every output:
 
 ```bash
 conda activate mirdp3        # or your mirdeep-p3 environment
@@ -623,7 +629,10 @@ conda activate mirdp3        # or your mirdeep-p3 environment
 ```
 
 Requires `tests/data/` (mini.fq + mini_genome.fasta) — already included
-in the repository.
+in the repository. Exit codes: `0` all passed, `1` missing external tool,
+`2` index download failed, `3` identification, `4` annotation, `5` target
+prediction, `6` analysis smoke. The analysis part needs `Rscript`; without
+it that section is skipped with `[skip]`, not failed.
 
 ## Troubleshooting / FAQ
 ### Q1: [Common error]

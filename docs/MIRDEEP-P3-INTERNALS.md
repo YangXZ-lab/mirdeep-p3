@@ -1,10 +1,10 @@
 # miRDeep-P3 代码知识库（内部实现笔记）
 
 > 用途：让 AI 助手（或任何接手的人）在**不重新通读全部源码**的前提下，准确回答"某功能在哪实现、某阈值在哪改、某输出列是什么含义"。
-> 版本基准：`src/version.py: __version__ = "3.1.7c"`，开发树 `/nfs/users/zhaojw/software/miRDeep-p3-3.1.7a`（git，base = `fb0b754` / 3.1.6c）。
-> 3.1.7a/b/c 的增补点在文中以 ★ 标注；其余结论来自 3.1.6c 源码静态通读，仍适用。
+> 版本基准：`src/version.py: __version__ = "3.1.8a"`，开发树 `/nfs/users/zhaojw/software/miRDeep-p3-3.1.7a`（git，base = `fb0b754` / 3.1.6c）。
+> 3.1.7a/b/c 与 3.1.8a 的增补点在各节内就地注明（如 §4.4.1、§6、§14）；其余结论来自 3.1.6c 源码静态通读，仍适用。
 > 维护约定：改代码后请同步更新本文对应小节，尤其是第 4/5/7/8/10 节的流程与常量表。
-> 待办与问题台账（编号 I-01…I-22 / O-01…O-10）见 `docs/MIRDEEP-P3-ISSUES.md`。
+> 待办与问题台账（编号 I-01…I-24 / O-01…O-10；其中 O-01/O-02/O-03/O-08 已于 3.1.8a 落地）见 `docs/MIRDEEP-P3-ISSUES.md`。
 
 ---
 
@@ -153,27 +153,37 @@ DEFAULT_PROGRESS      = 1      # 并发样本数
 - `_uniquify_prefixes()`：重名加 `-1/-2` 后缀，再兜底去重。
 - `resolve_prefixes()` → `(prefixes, group_prefixes)`；`--prefix` 支持三种给法：给 1 个（按组展开 `<p>-<g>-<n>`）、给"组数"个（每组一个）、给"输入数"个（每输入一个）。
 
-### 4.4 单样本流水线（顺序执行，索引与 stage 号对应代码顺序）
+### 4.4 单样本流水线（声明式 stage，由 `src/commands/stage_runner.py` 驱动）
 
-| # | 动作 | 关键命令 / 产物 |
+3.1.8a 把原来 15 个内联动作收成 **12 个 `Stage`**：每个 stage 声明 `sid`（沿用本文小节号）、`name`、`artifacts(ctx)`（产物路径，resume 判定用）、`run(ctx)`。`run_stages()` 顺序执行、计时、写 manifest；stage 内 `raise StageEmpty(reason)` 表示"空结果"（不是错误）。
+
+| sid | 动作 | 关键命令 / 产物 |
 |---|---|---|
-| 1 | 解压 | `temp/<stem>` |
-| 2 | 修剪 | FASTA 直接 copy → `<prefix>.processed.fa`；FASTQ 且 `reads_clean` → `trim_galore --small_rna --length {min} --max_length {max} --dont_gzip --suppress_warn -j 8 --basename {prefix} -o {out}` → `<prefix>_trimmed.fq` |
-| 3 | 格式整理 | `src/preprocess_files.py -i <trimmed> -o <temp>` → `<stem>.processed.fa` |
-| 4 | ncRNA 比对 | `bowtie -v 0 data/index/rfam_index`；`bowtie -v 1 data/index/mature_index` |
-| 5 | 去 ncRNA | `src/preprocess_reads.py <processed.fa> <rfam.aln> <mature.aln> <rpm_threshold> <prefix>.fa <prefix>.processed.fa <prefix>.total_reads` |
-| 6 | 基因组比对 | `bowtie -a -v 0 [--large-index] <genome_index>` → `<prefix>-processed.aln`（`*.ebwtl` 判 large） |
-| 7 | 转 BLAST + 过滤 | `src/convert_bowtie_to_blast.py <aln> <prefix>.fa <genome> -o <prefix>-processed.bst` → `src/filter_alignments.py -c {max_mappings}` → `*-processed-filter.bst`（空 → EMPTY） |
-| 8 | 切前体 + 折叠 | `src/excise_candidate.py <genome> <filter.bst> -l {pre_length} -o <prefix>_precursors.fa` → `RNAfold --noPS -j{threads}` → `*_precursors.struc` |
-| 9 | 全量 read 也走一遍 | 对 `<prefix>.fa`（含 ncRNA 的）重复 bowtie→bst→filter→`filter_alignments.py -b <prefix>.fa` → `<prefix>_filtered.fa` |
-| 10 | 前体索引 + 计数 | `bowtie-build` 建 precursor 索引 → bowtie → bst → `sort +3 -25` → `<prefix>_signatures` |
-| 11 | 核心预测 | `src/mod_miRDP.py <signatures> <precursors.struc> -o <prefix>_predictions`（空 → EMPTY） |
-| 12 | 染色体长度 | `samtools faidx <genome> --fai-idx temp/<genome>.fai` → `<prefix>/chr_length` |
-| 13 | 植物化过滤 | `src/mod_rm_redundant_meet_plant.py <chr_length> <precursors.fa> <predictions> <total_reads> -n <prefix>_nr_predictions -f <prefix>_filter_P_prediction`（非 0 退出 → RuntimeError；空 → EMPTY） |
-| 14 | 转 BED | `src/convert_to_bed.py -i <nr_pred> -o <prefix>_nr_predictions.bed` |
-| 15 | 收尾 | 复制 `<prefix>.processed.fa` 到输出根，并尝试建兼容软链 `<prefix>-processed.fa` |
+| 4.4-4.5 | 解压 + 修剪 + 格式整理 | `temp/<stem>`；FASTA 直接 copy → `<prefix>.processed.fa`；FASTQ 且 `reads_clean` → `trim_galore --small_rna --length {min} --max_length {max} --dont_gzip --suppress_warn -j 8 --basename {prefix} -o {out}` → `<prefix>_trimmed.fq`；再 `src/preprocess_files.py -i <trimmed> -o <temp>` |
+| 4.6 | ncRNA 比对 | `bowtie -v 0 data/index/rfam_index`；`bowtie -v 1 data/index/mature_index` |
+| 4.7 | 去 ncRNA | `src/preprocess_reads.py <processed.fa> <rfam.aln> <mature.aln> <rpm_threshold> <prefix>.fa <prefix>.processed.fa <prefix>.total_reads` |
+| 4.8 | 基因组比对 | `bowtie -a -v 0 [--large-index] <genome_index>` → `<prefix>-processed.aln`（`*.ebwtl` 判 large） |
+| 4.9 | 转 BLAST + 过滤 | `src/convert_bowtie_to_blast.py <aln> <prefix>.fa <genome> -o <prefix>-processed.bst` → `src/filter_alignments.py -c {max_mappings}` → `*-processed-filter.bst`（空 → StageEmpty） |
+| 4.10 | 切前体 + 折叠 | `src/excise_candidate.py <genome> <filter.bst> -l {pre_length} -o <prefix>_precursors.fa` → `RNAfold --noPS -j{threads}` → `*_precursors.struc` |
+| 4.11 | 全量 read 也走一遍 | 对 `<prefix>.fa`（含 ncRNA 的）重复 bowtie→bst→filter→`filter_alignments.py -b <prefix>.fa` → `<prefix>_filtered.fa` |
+| 4.12 | 前体索引 + 计数 | `bowtie-build` 建 precursor 索引 → bowtie → bst → `sort +3 -25` → `<prefix>_signatures` |
+| 4.13 | 核心预测 | `src/mod_miRDP.py <signatures> <precursors.struc> -o <prefix>_predictions`（空 → StageEmpty） |
+| 4.14 | 植物化过滤 | `samtools faidx <genome> --fai-idx temp/<genome>.fai` → `<prefix>/chr_length`；`src/mod_rm_redundant_meet_plant.py <chr_length> <precursors.fa> <predictions> <total_reads> -n <prefix>_nr_predictions -f <prefix>_filter_P_prediction`（非 0 退出 → RuntimeError；空 → StageEmpty） |
+| 4.15 | 转 BED | `src/convert_to_bed.py -i <nr_pred> -o <prefix>_nr_predictions.bed` |
+| 4.16 | 收尾 | 复制 `<prefix>.processed.fa` 到输出根，并尝试建兼容软链 `<prefix>-processed.fa` |
 
-> ⚠️ 第 11 步**不传** `-s/-x/-y/-z`（`src/commands/identification.py:818-821`）。即：阈值恒为 **1.0**、保守性**不打分**（known_nuclei 为空）、不跑 randfold、不跑 drosha。这是"植物精简模式"，与 Perl miRDeep 默认行为不同，是最容易被误认为 bug 的地方。
+> ⚠️ 第 4.13 步（`_stage_prediction()`）**不传** `-s/-x/-y/-z`。即：阈值恒为 **1.0**、保守性**不打分**（known_nuclei 为空）、不跑 randfold、不跑 drosha。这是"植物精简模式"，与 Perl miRDeep 默认行为不同，是最容易被误认为 bug 的地方（改进机会见台账 I-16）。
+
+### 4.4.1 resume 与 run manifest（3.1.8a）
+
+- **每样本 manifest**：`<out>/<prefix>/<prefix>.run.json`，原子写（`.part` → `os.replace`）。
+- **内容**：`schema`(1)、`version`、`signature`、`input{path,size,mtime,md5,seq_type}`、`genome{path,size,mtime}`、`params`、`tools{bowtie,bowtie-build,RNAfold,samtools,trim_galore}`、`env{python,platform}`、`stages{sid:{name,status,artifacts,artifacts_info,message,seconds}}`。
+- **批次 manifest**：`<out>/mirdp3-identification-<mmddyy-HHMM>.manifest.json`，每样本一条（prefix / status / message / manifest 路径），status 取 `ok|empty|failed|partial`。
+- **`--resume` 命中条件**（三者同时满足）：① manifest 记的 status ∈ {ok, skipped}；② 记的 artifacts 列表 == 当前算出的列表（防 prefix/参数漂移）；③ 磁盘上产物齐全且非空（`allow_empty` 的 stage 除外）。
+- **签名** = md5(version + 参数 + genome size/mtime + 输入 size/mtime + genome_index)。不一致打印 `[resume] <prefix>: input or parameters changed, not resuming` 并整轮重跑；**输入 md5 只在建 manifest 时算一次**，续跑判定只用 size/mtime，所以大文件也是秒级决策。
+- **与 `--clean` 冲突**：resume 时强制 `clean=False` 并打印 `[resume] --clean ignored: temp/ is needed to resume.`（resume 依赖 temp 里的中间产物）。
+- **已知小瑕疵（台账 I-24）**：批次 manifest 文件名精度到分钟，同一分钟内重跑会覆盖上一条（每样本 manifest 不受影响）。
+
 
 ### 4.5 状态机与汇总
 - `PIPELINE_OK="ok"` / `PIPELINE_EMPTY="empty"` / `PIPELINE_FAILED="failed"`。
@@ -184,7 +194,7 @@ DEFAULT_PROGRESS      = 1      # 并发样本数
 ### 4.6 索引与并行
 - 默认建在 `<out>/index/genome_index`；`is_bowtie_index_complete()` 检查 `.1/.2/.3/.4/.rev.1/.rev.2` + `.ebwt`/`.ebwtl`；`-d` 可跳过建索引。日志 `index_build.log`。
 - 并行：`multiprocessing.Pool(min(args.progress, len(runnable)))`，args 对象跨进程传。
-- `--clean` **只删各样本 temp/**（不删 index，与帮助文字"temp, index"不符，已知文档 bug）。
+- `--clean` 只删各样本 `temp/`；索引由 `--clean-index` 删（`-d` 传入的索引不动）。3.1.7c 起帮助文案已同步。
 
 ### 4.7 产物清单
 | 文件 | 含义 |
@@ -196,6 +206,8 @@ DEFAULT_PROGRESS      = 1      # 并发样本数
 | `<prefix>_filter_P_prediction` | **最终预测**（8 列，见 §10.2） |
 | `<prefix>_nr_predictions` / `.bed` | 去冗余 8 列 / BED6 前体区间 |
 | `<prefix>/chr_length` | 染色体长度（下游坐标校验用） |
+| `<prefix>/<prefix>.run.json` | 每样本 run manifest（版本/参数/工具版本/输入指纹/各 stage 状态与耗时） |
+| `<out>/mirdp3-identification-<mmddyy-HHMM>.manifest.json` | 批次 manifest（每样本一条：status + manifest 路径） |
 
 ---
 

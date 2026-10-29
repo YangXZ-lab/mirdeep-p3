@@ -38,6 +38,8 @@
 | I-20 | D 设计 | P3 | `bin/basic2bed.py` vs `analysis/tfbs.py` | 两套 basic-info→BED，第 5 列分别取 4 与 2 | 待记录 |
 | I-21 | D 设计 | P3 | `mod_miRDP.py` `_determine_arm()` | 负链 mature 直接返回空 → 负链 miRNA 结构上不可能被检出 | 待记录 |
 | I-22 | D 设计 | P3 | `src/rearrange_result.py` | basic-info 先写 24 列再重排成 22 列，重排顺序只在 docstring 里，易把两套列号搞混 | 待记录 |
+| I-23 | A 缺陷 | P1 | `src/commands/analysis/__init__.py:76-86` | 子命令别名 `DE` / `FA` 落到 else 分支，只打印帮助并 exit 1 | 已修 (3.1.8a) |
+| I-24 | C 工程 | P3 | `identification.py` 批次 manifest | 批次 manifest 文件名精度到分钟，同一分钟内重跑互相覆盖 | 待办 |
 
 ---
 
@@ -176,6 +178,18 @@
 - **建议改法**：把 `order` 提升为共享常量（如 `src/utils/basic_info_schema.py`），并在 `docs/MIRDEEP-P3-INTERNALS.md §10.1` 保留双表；下游脚本改为引用常量或列名访问。
 - **验证方法**：用 `tests/test_output/annotation/mirdp3-test/mirdp3-test-basic-info` 做列名断言。
 
+### I-23（P1）analysis 子命令别名 DE / FA 完全不可用 —— 已修 (3.1.8a)
+- **证据**：`src/commands/analysis/__init__.py:76-86` 原来逐个比较 `args.analysis_command == "Differential_expression"`；但 argparse 经别名调用时 dest 值是 `"DE"`，于是落到 `else: parser.print_help(); sys.exit(1)`。实测 `mirdeep-p3 analysis DE ...` 只打印帮助、返回码 1、stderr 为空。
+- **影响**：README 把 `DE` 写成常用简写，照文档敲命令的人拿不到结果，也看不到报错。
+- **修法**：parse 后先归一化 `command = {"DE": "Differential_expression", "FA": "Functional_analysis"}.get(args.analysis_command, args.analysis_command)`，六个分支改比 `command`。
+- **验证方法**：`test.sh` 第 10 段故意用 `analysis DE` 调用，通过即覆盖。
+
+### I-24（P3）批次 manifest 文件名精度到分钟 —— 待办
+- **证据**：`identification.py: run()` 用 `datetime.now().strftime("%m%d%Y-%H%M")` 生成时间戳（与 pipe 文件同源），批次 manifest 复用之。
+- **影响**：同一分钟内重跑会覆盖上一条批次记录（每样本 `*.run.json` 不受影响，信息不丢）。
+- **建议改法**：时间戳加秒（`%m%d%Y-%H%M%S`），或存在同名时追加 `-2`。
+- **验证方法**：连续两次 `--resume` 后 `ls <out>/*.manifest.json` 应有两条。
+
 ---
 
 ## 3. 设计改进机会（不影响正确性）
@@ -193,6 +207,8 @@
 | O-09 | `pyproject.toml` + `console_scripts` 安装入口 | 摆脱"无扩展名脚本 + chmod"的坑（I-13） | 中，会动安装方式 |
 | O-10 | 启动时比对 `DATA_INDEX_RELEASE` 与已装索引版本 | 防"软件新、索引旧"的静默不一致 | 小 |
 
+**3.1.8a 已落地**：O-01、O-02、O-03、O-08（见 §5 变更日志）。其余仍开放。
+
 ---
 
 ## 4. 运行环境备忘（不是 bug，但会绊人）
@@ -209,11 +225,16 @@
 
 | 日期 | 编号 | 改动 | commit | 验证方式 |
 |---|---|---|---|---|
-| 2026-11-18 | I-01 | 补回 `src/miRNA_consistency.py`（544 行，三种模式），`--consistency`/`--common` 恢复可用 | `8ecfa30` | 参考模式与 common 模式各产出 19 行 |
-| 2026-11-18 | I-02 | Target_finder 跑完默认删 `temp`，新增 `--keep-temp` | `8ecfa30` | 默认无 temp / `--keep-temp` 有 temp，两次输出一致 |
-| 2026-11-18 | I-03 | 新增 `src/utils/toolset.py`；六个 analysis 子命令统一解析外部工具并支持 `--rscript/--fimo/--bedtools/--ssearch36/--seqkit/--emapper/--python` | `8ecfa30` | 六子命令 `-h` 均含新参数；坏路径提前退出 |
-| 2026-11-18 | I-04 | `check_python_deps.py` 改为诚实检查：core 无三方依赖，numpy 标为 psrna 引擎的 optional | `8ecfa30` | `test.sh` 打印 `numpy ✔ 2.4.4 (optional ...)` |
-| 2026-11-18 | I-05 | `--step` 参数剥离改为按索引过滤，不再依赖固定偏移 | `8ecfa30` | `-h --step 1,2` 与 `--step 1,2 -h` 输出 byte-identical |
-| 2026-11-18 | I-07 | `--clean` 文案与实际一致（只删 temp）；新增 `--clean-index`，`-d` 提供的索引跳过并记日志 | `8ecfa30` | 帮助正文含 `genome index is kept` |
-| 2026-11-18 | I-10 | 补回 `scripts/dedup_score_pair.py`（按 (col1,col2) 保留最高分） | `8ecfa30` | 脚本可执行，`docs/core-dataset.md` 流程可复现 |
-| 2026-11-18 | I-13 | `mirdeep-p3`、`src/miRNA_consistency.py`、`scripts/dedup_score_pair.py` 以 100755 提交 | `8ecfa30` | `git ls-files -s` |
+| 2026-11-18 | I-01 | 补回 `src/miRNA_consistency.py`（544 行，三种模式），`--consistency`/`--common` 恢复可用 | `ab930f9` | 参考模式与 common 模式各产出 19 行 |
+| 2026-11-18 | I-02 | Target_finder 跑完默认删 `temp`，新增 `--keep-temp` | `ab930f9` | 默认无 temp / `--keep-temp` 有 temp，两次输出一致 |
+| 2026-11-18 | I-03 | 新增 `src/utils/toolset.py`；六个 analysis 子命令统一解析外部工具并支持 `--rscript/--fimo/--bedtools/--ssearch36/--seqkit/--emapper/--python` | `ab930f9` | 六子命令 `-h` 均含新参数；坏路径提前退出 |
+| 2026-11-18 | I-04 | `check_python_deps.py` 改为诚实检查：core 无三方依赖，numpy 标为 psrna 引擎的 optional | `ab930f9` | `test.sh` 打印 `numpy ✔ 2.4.4 (optional ...)` |
+| 2026-11-18 | O-01 | identification 重构为 12 个声明式 `Stage`（新 `src/commands/stage_runner.py`），空结果改用 `StageEmpty` 表达 | `770c2bc` | mini 五产物 md5 与 3.1.7c 逐一相同 |
+| 2026-11-18 | O-02 | 新增 `--resume`：按 manifest 记录 + 产物存在性跳过；签名变化整轮重跑；强制忽略 `--clean` | `770c2bc` | 全量续跑 12/12 skip；删 bed 只补 4.15；改签名触发全跑 |
+| 2026-11-18 | O-03 | 每样本 `<prefix>.run.json` + 批次 `<time>.manifest.json`（版本/参数/工具版本/输入指纹/各 stage 状态与耗时，原子写） | `770c2bc` | `tests/test_output/mini/mini.run.json` 中 12 个 stage 全 status=ok |
+| 2026-11-18 | O-08 | `test.sh` 第 10 段 analysis 冒烟（Stat + DE，新 fixture 180 miRNA × 6 样本），失败退出码 6 | `770c2bc` | `./test.sh -t 12 -k` → ALL TESTS PASSED |
+| 2026-11-18 | I-23 | 修复 `analysis DE` / `analysis FA` 别名分发（归一化命令名） | `770c2bc` | test.sh 用 `analysis DE` 调用并通过 |
+| 2026-11-18 | I-05 | `--step` 参数剥离改为按索引过滤，不再依赖固定偏移 | `ab930f9` | `-h --step 1,2` 与 `--step 1,2 -h` 输出 byte-identical |
+| 2026-11-18 | I-07 | `--clean` 文案与实际一致（只删 temp）；新增 `--clean-index`，`-d` 提供的索引跳过并记日志 | `ab930f9` | 帮助正文含 `genome index is kept` |
+| 2026-11-18 | I-10 | 补回 `scripts/dedup_score_pair.py`（按 (col1,col2) 保留最高分） | `ab930f9` | 脚本可执行，`docs/core-dataset.md` 流程可复现 |
+| 2026-11-18 | I-13 | `mirdeep-p3`、`src/miRNA_consistency.py`、`scripts/dedup_score_pair.py` 以 100755 提交 | `ab930f9` | `git ls-files -s` |
