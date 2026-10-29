@@ -1,10 +1,10 @@
 # miRDeep-P3 代码知识库（内部实现笔记）
 
 > 用途：让 AI 助手（或任何接手的人）在**不重新通读全部源码**的前提下，准确回答"某功能在哪实现、某阈值在哪改、某输出列是什么含义"。
-> 版本基准：`src/version.py: __version__ = "3.1.8a"`，开发树 `/nfs/users/zhaojw/software/miRDeep-p3-3.1.7a`（git，base = `fb0b754` / 3.1.6c）。
-> 3.1.7a/b/c 与 3.1.8a 的增补点在各节内就地注明（如 §4.4.1、§6、§14）；其余结论来自 3.1.6c 源码静态通读，仍适用。
+> 版本基准：`src/version.py: __version__ = "3.1.8b"`，开发树 `/nfs/users/zhaojw/software/miRDeep-p3-3.1.7a`（git，base = `fb0b754` / 3.1.6c）。
+> 3.1.7a/b/c 与 3.1.8a/b 的增补点在各节内就地注明（如 §3.2、§4.4.1、§6、§12.4、§13、§14）；其余结论来自 3.1.6c 源码静态通读，仍适用。
 > 维护约定：改代码后请同步更新本文对应小节，尤其是第 4/5/7/8/10 节的流程与常量表。
-> 待办与问题台账（编号 I-01…I-24 / O-01…O-10；其中 O-01/O-02/O-03/O-08 已于 3.1.8a 落地）见 `docs/MIRDEEP-P3-ISSUES.md`。
+> 待办与问题台账（编号 I-01…I-24 / O-01…O-10；O-01/02/03/08 于 3.1.8a 落地，O-05/06/09/10 于 3.1.8b 落地，O-07 明确不做）见 `docs/MIRDEEP-P3-ISSUES.md`。
 
 ---
 
@@ -98,7 +98,7 @@ mirdeep-p3/                     入口（argparse 分发，17979 B）
 ## 3. 入口层 CLI（`./mirdeep-p3`）
 
 ### 3.1 启动顺序
-1. `PROJECT_ROOT = Path(__file__).resolve().parent`；`SRC_DIR = PROJECT_ROOT/"src"` 插到 `sys.path[0]`。
+1. `PROJECT_ROOT = _resolve_project_root()`：先看环境变量 `MIRDEEP_P3_HOME`（存在且是目录才采用，否则打 `[warn] MIRDEEP_P3_HOME=... is not a directory; ignoring it.`），再回落 `Path(__file__).resolve().parent`；`SRC_DIR = PROJECT_ROOT/"src"` 插到 `sys.path[0]`。
 2. `from version import __version__`；`from utils.config import load_config`；`from commands import identification, annotation, analysis`。
 3. 打印 BANNER + GitHub 链接。
 4. `preprocess_argv()`：把老写法 `mirdeep-p3 step 1 ...` 改写成 `--step 1`（向后兼容）。
@@ -107,9 +107,11 @@ mirdeep-p3/                     入口（argparse 分发，17979 B）
 ### 3.2 帮助系统
 - 子命令都 `add_help=False`，自己处理 `-h`。
 - `handle_help_request()`：
-  - `--step` 同时含 1 和 2 且 `-h` → `show_combined_identification_annotation_help()`（内置大段手写帮助，逐参数标注 `[ID]` / `[AN]` / `[BOTH]` 归属）。
   - 单 step `-h` → 该 step 的 `parser.print_help()`。
-  - 多 step `-h` → `utils/help_display.print_combined_step_help()`（**仍是占位实现**，文案为 "(Full combined help will be implemented later.)"）。
+  - 多 step `-h` → `show_combined_step_help(step_str)`：step 名归一后按 1,2,3 排序，逐个取 `identification.build_parser()` / `annotation.build_parser()` / `analysis.build_parser()`，交给 `utils/help_display.print_combined_step_help(steps, parsers)` **程序化生成**。★ 3.1.8b（O-06）起如此；旧的手写 1+2 帮助 `show_combined_identification_annotation_help()`（55 行）已删。
+  - 生成规则：按"哪些 step 接受该选项"分组，标题形如 `Accepted by every selected step` 或 `Accepted by: identification, annotation`；选项名 + metavar 由 argparse action 还原（`nargs==0` 只印选项名）；同一选项在不同 step 的 help 文本不同时追加 `(help text differs per step)`。`--step 1,2` 另打印 Combined run layout（`OUT/identification`、`OUT/annotation`、`-i` 由 `.pipe` 自动填充、`--prefix_miRNA`/`--species` 必需、`-g/-d/-r/-t/-p` 从 identification 回落）；末尾列 analysis 子命令与 `Run mirdeep-p3 <step> -h ...`。
+  - analysis 子命令列表从 `action._choices_actions` 取，按 `id(sub)` 去重，别名 `DE`/`FA` 只出现一次。
+  - 实测：`--step 1,2`、`1,3`、`2,3`、`1,2,3` 全部 rc=0；`1,3` 不含 `--prefix_miRNA`，`2,3` 含。
 - `--step 3` 单独使用时只调 `analysis.main(["-h"])` 打印帮助，不执行任何分析。
 
 ### 3.3 配置合并
@@ -178,11 +180,12 @@ DEFAULT_PROGRESS      = 1      # 并发样本数
 
 - **每样本 manifest**：`<out>/<prefix>/<prefix>.run.json`，原子写（`.part` → `os.replace`）。
 - **内容**：`schema`(1)、`version`、`signature`、`input{path,size,mtime,md5,seq_type}`、`genome{path,size,mtime}`、`params`、`tools{bowtie,bowtie-build,RNAfold,samtools,trim_galore}`、`env{python,platform}`、`stages{sid:{name,status,artifacts,artifacts_info,message,seconds}}`。
-- **批次 manifest**：`<out>/mirdp3-identification-<mmddyy-HHMM>.manifest.json`，每样本一条（prefix / status / message / manifest 路径），status 取 `ok|empty|failed|partial`。
+- **批次 manifest**：`<out>/mirdp3-identification-<mmddyy-HHMMSS>.manifest.json`，每样本一条（prefix / status / message / manifest 路径），status 取 `ok|empty|failed|partial`。
 - **`--resume` 命中条件**（三者同时满足）：① manifest 记的 status ∈ {ok, skipped}；② 记的 artifacts 列表 == 当前算出的列表（防 prefix/参数漂移）；③ 磁盘上产物齐全且非空（`allow_empty` 的 stage 除外）。
-- **签名** = md5(version + 参数 + genome size/mtime + 输入 size/mtime + genome_index)。不一致打印 `[resume] <prefix>: input or parameters changed, not resuming` 并整轮重跑；**输入 md5 只在建 manifest 时算一次**，续跑判定只用 size/mtime，所以大文件也是秒级决策。
+- **签名** = md5(version + 参数 + genome size/mtime + 输入 size/mtime + genome_index + `data_index` 已装索引 tag)。不一致打印 `[resume] <prefix>: input or parameters changed, not resuming` 并整轮重跑；**输入 md5 只在建 manifest 时算一次**，续跑判定只用 size/mtime，所以大文件也是秒级决策。
 - **与 `--clean` 冲突**：resume 时强制 `clean=False` 并打印 `[resume] --clean ignored: temp/ is needed to resume.`（resume 依赖 temp 里的中间产物）。
-- **已知小瑕疵（台账 I-24）**：批次 manifest 文件名精度到分钟，同一分钟内重跑会覆盖上一条（每样本 manifest 不受影响）。
+- **文件名精度**：批次 manifest 带秒（`%m%d%Y-%H%M%S`，I-24 已修），同一分钟内重跑不再互相覆盖；`.pipe` 清单仍按分钟（沿用旧命名，便于下游匹配）。
+- **数据索引状态（3.1.8b，O-10）**：`identification.run()` 与 `annotation.run()` 开头各打印一行 `[index] data index: ...`（口径见 §12.4）；批次 manifest 的 `params.data_index` 记完整状态字典，样本 manifest 的 `params.data_index` 记已装 tag；索引 tag 变化会让签名失效，从而强制整轮重跑。
 
 
 ### 4.5 状态机与汇总
@@ -207,7 +210,7 @@ DEFAULT_PROGRESS      = 1      # 并发样本数
 | `<prefix>_nr_predictions` / `.bed` | 去冗余 8 列 / BED6 前体区间 |
 | `<prefix>/chr_length` | 染色体长度（下游坐标校验用） |
 | `<prefix>/<prefix>.run.json` | 每样本 run manifest（版本/参数/工具版本/输入指纹/各 stage 状态与耗时） |
-| `<out>/mirdp3-identification-<mmddyy-HHMM>.manifest.json` | 批次 manifest（每样本一条：status + manifest 路径） |
+| `<out>/mirdp3-identification-<mmddyy-HHMMSS>.manifest.json` | 批次 manifest（每样本一条：status + manifest 路径） |
 
 ---
 
@@ -468,7 +471,9 @@ order = [0, 1, 2, 3, 4, 7, 5, 6, 8, 9, 12, 13, 10, 11, 14, 15, 16, 17, 18, 20, 2
 - `config.py`：`load_config(path) -> Dict[str,str]`，格式 `key: value`，`#` 注释，缺 `:` 抛 `ValueError("Invalid config line {n}: missing ':' separator")`。
 - `dependencies.py`：`check_external_tools(Dict[str, Optional[str]]) -> (all_ok, missing)`，先 `shutil.which` 或校验可执行位，再依次试 `--version` / `-version` / 空参，`timeout=20`，逐行打 ✔/✘。
 - `shellquote.py`：`shq(value) = shlex.quote(str(value))`；只对路径/值用，别包 shell 语法。
-- `help_display.py`：`print_combined_step_help(step_str)` **仍为占位**。
+- `help_display.py`：`print_combined_step_help(steps, parsers)`（3.1.8b 起为真实实现，见 §3.2），另有 `_is_help_action()`、`_invocation()`、`_subcommand_help()`、`_collect()`、`_print_rows()`。
+- `coords.py`（3.1.8b，O-05）：`STAR_LEN = 21`、`compute_star(pre_seq, mature_seq, pre_start, pre_end, strand, star_len=STAR_LEN)`（半开区间 `[start, end)`）、`map_prediction(*, mature_beg, mature_end, star_beg, star_end, mature_arm, strand, excise_beg, excise_end) -> dict`（1-based inclusive；坐标 ≤0 抛 `ValueError("negative or zero positions")`，内部交换 bg>end）。被 `src/primary-basic-info.py` 与 `src/mod_rm_redundant_meet_plant.py` 共用（省掉 116 行重复），单测 `tests/test_coordinates.py`。
+- `data_index.py`（3.1.8b，O-10）：`expected_release()`、`installed_release()`、`write_installed()`、`index_status() -> {state, installed, expected, path}`、`describe_index()`；单测 `tests/test_data_index.py`。
 
 ### 11.2 `scripts/`（按用途）
 | 脚本 | 职责 |
@@ -530,15 +535,20 @@ conda env create -f mirdp3_environment.yml -n mirdp3
 ### 12.2 已锁定的实测版本（`environment.yml`）
 `python=3.12.13`、`r-base=4.4.1`、`bowtie=1.3.1`、`bowtie2=2.5.5`、`viennarna=2.7.2`、`trim-galore=2.2.0`、`seqkit=2.13.0`、`meme=5.5.9`、`diamond=2.2.0`、`fasta3=36.3.8`、`eggnog-mapper=2.1.12`、`hmmer=3.4`、`bedtools=2.31.1`、`mmseqs2=18.8cc5c`、`samtools=1.23.1`。
 
-### 12.3 三种安装
+### 12.3 四种安装
 1. `conda install -c jaguares mirdeep-p3`（自带 `data/index`）。
-2. 源码：`conda env create -f mirdp3_environment.yml -n mirdp3` + 下载 `data-index.tar.gz` 解到 `data/`。
+2. 源码：`conda env create -f mirdp3_environment.yml -n mirdp3` + 下载 `data-index.tar.gz` 解到 `data/`，再写 `echo mirdeep-p3-v3.1.4c-full > data/index/.index-version`。
 3. Docker：`merc3dez/mirdeep-p3:3.1.6c-full`（另有阿里云镜像）。
+4. **开发者入口（3.1.8b，O-09 保守版）**：在源码树里 `pip install -e .`，得到 `mirdeep-p3` console script（`mirdeep_p3/cli.py` 定位 checkout 后 `runpy.run_path` 调 `./mirdeep-p3`，是同一个程序）。`pyproject.toml` 只打包 `mirdeep_p3` 这个薄壳，**不打包** `src/`、`data/`、`scripts/`，树布局不变；树移动后设 `MIRDEEP_P3_HOME` 指回根目录。
 
 ### 12.4 数据索引
 - 版本号唯一真源：`data-index.env` 的 `DATA_INDEX_RELEASE=mirdeep-p3-v3.1.4c-full`。
 - 内容：`rfam_index`、`mature_index`、`isoform-in`（PmiREN blast 索引）。
 - 该文件里明确警告：**不要删对应 GitHub Release/tag**，因为 `ci.yml`、`docker-release.yml`、`test.sh`、`README.md`、`CONTRIBUTING.md`、`conda.recipe/meta.yaml`、bioconda recipe 都读它。
+- **已装索引的标记文件**：`data/index/.index-version`（一行 tag）。`src/utils/data_index.py` 的 `index_status()` 只比较 **已装 tag vs `data-index.env` 的 `DATA_INDEX_RELEASE`**（两者同在 data 轴），**不比较软件版本** —— 软件升级比索引频繁，"软件新、索引旧"是常态，拿软件版本比索引只会天天报警。
+- 五种状态：`missing`（目录不存在，唯一会影响运行的）→ `unrecorded`（无标记但有 env 期望值）→ `unknown`（无标记也无期望值）→ `match` → `mismatch`（**只警告不阻断**，提示结果可能与按发布索引跑出的结果不同）。
+- `test.sh` 解压索引后自动写 `.index-version`；手工安装需自己写一行。
+- **完整说明与升级 checklist**：`docs/DATA-INDEX.md` —— 两条版本轴、当前 tag、标记文件与五种状态、谁在读这个 tag、换索引要做的 8 步、常见问题。
 
 ---
 
@@ -547,12 +557,13 @@ conda env create -f mirdp3_environment.yml -n mirdp3
 ```bash
 ./test.sh [-t threads=8] [-q] [-k]     # -k 保留 tests/test_output
 ```
-- 退出码：`0` 全通过、`1` 依赖缺失、`2` 数据下载失败、`3` identification 失败、`4` annotation 失败。
+- 退出码：`0` 全通过、`1` 依赖缺失、`2` 数据下载失败、`3` identification 失败、`4` annotation 失败、`5` Target_finder、`6` analysis 冒烟、`7` CLI/帮助/单测。
 - 依赖检查：`bowtie`、`RNAfold`、`samtools`、`bedtools`、`seqkit`、`blastn`。
 - 数据：`tests/data/mini.fq` + `mini_genome.fasta`。
 - 校验点：`<out>/mini/mini-processed.fa`、`mini_filter_P_prediction`；annotation 侧 `annotation/mirdp3-test/mirdp3-test-basic-info`。
 - ★ 3.1.7b 起还覆盖 Target_finder：默认引擎断言 120 行且 NF==6、连跑两次 `cmp` 一致、`--no-allow-gap` 与默认一致、有 `ssearch36` 时 `--engine ssearch` ≥100 行；失败退出码 5。
 - ★ 3.1.7c 起 `test.sh` 依赖检查前会打印 `check_python_deps.py` 的 core/optional 状态（core 无三方依赖，numpy 供 psrna 引擎）。
+- ★ 3.1.8b 起新增第 11 段 "CLI, help and unit checks"：四种 `--step` 组合帮助（`1,3` 不得含 `--prefix_miRNA`、`2,3` 必须含、`1,2` 必须有共同段）、`python3 -m mirdeep_p3.cli -h`、`tests/test_coordinates.py`、`tests/test_data_index.py`，并打印 data index 状态；失败退出码 `7`。
 - ⚠️ test.sh 用 `/tmp` 中转（`DATA_INDEX_RELEASE` 拼的 URL 下载到 /tmp），本机执行需改到工作目录。
 - annotation 调用示例（README 口径）：
   ```bash

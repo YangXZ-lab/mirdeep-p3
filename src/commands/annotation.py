@@ -22,6 +22,7 @@ from typing import List, Dict, Optional, Tuple
 from utils.config import load_config
 from utils.dependencies import check_external_tools
 from utils.shellquote import shq
+from utils.data_index import describe_index, index_status
 from check_python_deps import check_python_deps
 
 DEFAULT_THREADS = 1
@@ -444,6 +445,8 @@ def run(args):
     ensure_defaults(args)
     cfg = getattr(args, 'config_data', {})
     project_root = args.project_root
+    # Data index (O-10): report the installed release; see utils/data_index.py.
+    print(f"[index] data index: {describe_index(index_status(project_root))}")
 
     # Merge config file values (same as identification)
     config_mapping = {

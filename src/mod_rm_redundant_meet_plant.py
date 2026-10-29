@@ -16,6 +16,8 @@ from collections import defaultdict
 from typing import Dict, List, Tuple, Set
 import argparse
 
+from utils.coords import map_prediction
+
 
 def parse_chromosome_lengths(chr_length_file: str) -> Dict[str, int]:
     """Parse chromosome length file.
@@ -340,92 +342,28 @@ def calculate_genomic_positions(predictions: List[Dict], precursors: Dict[str, D
             sys.stderr.write(f"Warning: Chromosome {chrom} not found in chromosome length file\n")
             continue
         
-        mature_bg_abs = 0
-        mature_end_abs = 0
-        star_bg_abs = 0
-        star_end_abs = 0
-        pre_bg_abs = 0
-        pre_end_abs = 0
-        
-        if strand == '+':
-            mature_bg_abs = excise_beg + mature_beg_rel - 1
-            mature_end_abs = excise_beg + mature_end_rel - 1
-            star_bg_abs = excise_beg + star_beg_rel - 1
-            star_end_abs = excise_beg + star_end_rel - 1
-            
-            # Adjust precursor boundaries based on mature_arm
-            if mature_arm == 'first':
-                mature_bg_abs -= 1
-                mature_end_abs -= 1
-                pre_bg_abs = mature_bg_abs
-                pre_end_abs = star_end_abs
-            elif mature_arm == 'second':
-                pre_bg_abs = star_bg_abs - 1
-                pre_end_abs = mature_end_abs
-            else:
-                pre_bg_abs = excise_beg
-                pre_end_abs = excise_end
-            
-            # Final adjustments
-            if mature_arm == 'first':
-                mature_end_abs += 1
-            elif mature_arm == 'second':
-                mature_bg_abs -= 1
-                
-        else:
-            mature_bg_abs = excise_end - mature_end_rel
-            mature_end_abs = excise_end - mature_beg_rel
-            star_bg_abs = excise_end - star_end_rel
-            star_end_abs = excise_end - star_beg_rel
-            
-            # Adjust precursor boundaries based on mature_arm
-            if mature_arm == 'first':
-                mature_bg_abs += 1
-                mature_end_abs += 1
-                pre_bg_abs = star_end_abs - 1
-                pre_end_abs = mature_end_abs
-            elif mature_arm == 'second':
-                pre_bg_abs = mature_bg_abs
-                pre_end_abs = star_end_abs
-            else:
-                pre_bg_abs = excise_beg
-                pre_end_abs = excise_end
-            
-            # Final adjustments
-            if mature_arm == 'first':
-                mature_bg_abs -= 1
-                pre_bg_abs = star_bg_abs
-            elif mature_arm == 'second':
-                mature_end_abs += 1
-                pre_end_abs += 1
-        
-        # Verify coordinates are positive
-        if (mature_bg_abs <= 0 or mature_end_abs <= 0 or 
-            star_bg_abs <= 0 or star_end_abs <= 0 or
-            pre_bg_abs <= 0 or pre_end_abs <= 0):
-            sys.stderr.write(f"Warning: Invalid coordinates for precursor {pri_id}: negative or zero positions\n")
+        try:
+            abs_coords = map_prediction(
+                mature_beg=mature_beg_rel,
+                mature_end=mature_end_rel,
+                star_beg=star_beg_rel,
+                star_end=star_end_rel,
+                mature_arm=mature_arm,
+                strand=strand,
+                excise_beg=excise_beg,
+                excise_end=excise_end,
+            )
+        except ValueError as exc:
+            sys.stderr.write(
+                f"Warning: Invalid coordinates for precursor {pri_id}: {exc}\n")
             continue
-        
-        if pre_bg_abs > pre_end_abs:
-            pre_bg_abs, pre_end_abs = pre_end_abs, pre_bg_abs
-        
-        if mature_bg_abs > mature_end_abs:
-            mature_bg_abs, mature_end_abs = mature_end_abs, mature_bg_abs
-        
-        if star_bg_abs > star_end_abs:
-            star_bg_abs, star_end_abs = star_end_abs, star_bg_abs
-        
+
         # Create result
         result = pred.copy()
+        result.update(abs_coords)
         result.update({
             'chromosome': chrom,
             'strand': strand,
-            'mature_bg_abs': mature_bg_abs,
-            'mature_end_abs': mature_end_abs,
-            'star_bg_abs': star_bg_abs,
-            'star_end_abs': star_end_abs,
-            'pre_bg_abs': pre_bg_abs,
-            'pre_end_abs': pre_end_abs,
             'mature_beg_rel': mature_beg_rel,
             'mature_end_rel': mature_end_rel,
             'star_beg_rel': star_beg_rel,

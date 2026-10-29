@@ -24,6 +24,7 @@ from collections import Counter
 from utils.config import load_config
 from utils.dependencies import check_external_tools
 from utils.shellquote import shq
+from utils.data_index import describe_index, index_status, installed_release
 from check_python_deps import check_python_deps
 from commands.stage_runner import (
     RunManifest,
@@ -1042,6 +1043,8 @@ def _manifest_signature(ctx: SampleContext) -> str:
     return digest({
         "version": MIRDP3_VERSION,
         "prefix": ctx.prefix,
+        # A data-index upgrade changes ncRNA masking, so it invalidates a resume (O-10).
+        "data_index": installed_release(ctx.project_root / "data" / "index"),
         "input": file_fingerprint(ctx.input_file),
         "genome": file_fingerprint(ctx.genome),
         "genome_index": str(ctx.genome_index),
@@ -1067,6 +1070,7 @@ def _manifest_params(ctx: SampleContext) -> Dict:
         "max_mappings": ctx.max_mappings,
         "pre_length": ctx.pre_length,
         "threads": ctx.threads,
+        "data_index": installed_release(ctx.project_root / "data" / "index"),
     }
 
 
@@ -1317,10 +1321,17 @@ def run(args):
     args.threads = args.threads or cfg.get("t/threads", DEFAULT_THREADS)
     args.progress = args.progress or cfg.get("p/progress", DEFAULT_PROGRESS)
 
+    # Data index (O-10): software and index are released separately, so report
+    # which index is installed instead of comparing it with the version.
+    print(f"[index] data index: {describe_index(index_status(args.project_root))}")
+
     print(f"\nProcessing {len(input_files)} input file(s) with {args.progress} parallel process(es).")
 
     # ---- 4. Create pipe file (overview) ----
     timestamp = datetime.now().strftime("%m%d%Y-%H%M")
+    # The batch manifest needs second resolution: two runs started in the same minute
+    # must not overwrite each other's record (I-24).
+    manifest_stamp = datetime.now().strftime("%m%d%Y-%H%M%S")
     pipe_file = output_root / f"mirdp3-identification-{timestamp}.pipe"
     with open(pipe_file, 'w') as pf:
         for inp, pref, gpref in zip(input_files, prefixes, group_prefixes):
@@ -1426,7 +1437,7 @@ def run(args):
 
     # ---- 5c. Batch manifest ----
     # One machine-readable record per batch, pointing at each sample manifest.
-    batch_manifest = output_root / f"mirdp3-identification-{timestamp}.manifest.json"
+    batch_manifest = output_root / f"mirdp3-identification-{manifest_stamp}.manifest.json"
     batch = RunManifest.create_batch(
         batch_manifest,
         tool="mirdeep-p3",
@@ -1438,6 +1449,7 @@ def run(args):
             "genome": str(genome),
             "genome_index": str(shared_genome_index),
             "resume": bool(getattr(args, 'resume', False)),
+            "data_index": index_status(args.project_root),
         },
         tools=getattr(args, 'tool_versions', {}) or {},
         signature=digest({"prefixes": list(prefixes),

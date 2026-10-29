@@ -98,6 +98,8 @@ if [ ! -d "${ROOT}/data/index" ]; then
     fi
     rm -f /tmp/data-index.tar.gz
     log "Index data extracted to ${ROOT}/data/index/"
+    # Record the release that was just unpacked so the software can report it (O-10).
+    printf '%s\n' "$RELEASE_TAG" > "${ROOT}/data/index/.index-version" 2>/dev/null || true
 else
     log "Using existing ${ROOT}/data/index/"
 fi
@@ -266,7 +268,65 @@ else
     log "Rscript not found - skipping the analysis smoke test."
 fi
 
-# ---- 11. Cleanup -------------------------------------------------------------
+# ---- 11. CLI, help and unit checks ------------------------------------------
+log "Checking generated help, the console entry point and unit tests..."
+
+for combo in "1,3" "2,3" "1,2,3"; do
+    HELP_OUT="$("${ROOT}/mirdeep-p3" -h --step "$combo" 2>&1)" || fail "combined help failed for --step $combo" 7
+    printf '%s' "$HELP_OUT" | grep -q "Steps: " \
+        || fail "combined help for --step $combo has no step list" 7
+done
+"${ROOT}/mirdeep-p3" -h --step 1,3 2>&1 | grep -q "^analysis subcommands" \
+    || fail "--step 1,3 help does not list the analysis subcommands" 7
+if "${ROOT}/mirdeep-p3" -h --step 1,3 2>&1 | grep -q -- "--prefix_miRNA"; then
+    fail "--step 1,3 help must not list annotation-only options" 7
+fi
+"${ROOT}/mirdeep-p3" -h --step 2,3 2>&1 | grep -q -- "--prefix_miRNA" \
+    || fail "--step 2,3 help should list --prefix_miRNA" 7
+"${ROOT}/mirdeep-p3" -h --step 1,2 2>&1 | grep -q "Accepted by every selected step" \
+    || fail "--step 1,2 help should show the shared option block" 7
+log "Combined help verified for --step 1,2 / 1,3 / 2,3 / 1,2,3."
+
+if [ -f "${ROOT}/mirdeep_p3/cli.py" ]; then
+    ( cd "${ROOT}" && python3 -m mirdeep_p3.cli -h >/dev/null 2>&1 ) \
+        || fail "python3 -m mirdeep_p3.cli -h failed" 7
+    log "Console entry point (mirdeep_p3.cli) verified."
+fi
+
+if [ -f "${ROOT}/tests/test_coordinates.py" ]; then
+    python3 "${ROOT}/tests/test_coordinates.py" >/dev/null 2>&1 \
+        || fail "tests/test_coordinates.py failed" 7
+    log "Coordinate unit tests passed (O-05)."
+fi
+if [ -f "${ROOT}/tests/test_data_index.py" ]; then
+    python3 "${ROOT}/tests/test_data_index.py" >/dev/null 2>&1 \
+        || fail "tests/test_data_index.py failed" 7
+    log "Data-index unit tests passed (O-10)."
+fi
+
+INDEX_STATE="$(python3 -c "import sys; sys.path.insert(0, '${ROOT}/src'); from utils.data_index import describe_index, index_status; print(describe_index(index_status('${ROOT}')))" 2>&1)" \
+    || fail "data index status could not be read" 7
+log "data index: ${INDEX_STATE}"
+# The README "Current versions" block and docs/DATA-INDEX.md must quote the live
+# versions; a software bump or a new data index that skips them makes the docs lie.
+SRC_VERSION="$(sed -n 's/^__version__ *= *"\(.*\)"/\1/p' "${ROOT}/src/version.py" | head -1)"
+README_VERSION="$(sed -n 's/^> \*\*Current versions\*\* .*software \*\*v\([^*]*\)\*\*.*/\1/p' "${ROOT}/README.md" | head -1)"
+if [ "$README_VERSION" != "$SRC_VERSION" ]; then
+    fail "README 'Current versions' says v${README_VERSION:-<none>} but src/version.py says ${SRC_VERSION}; update README.md and docs/DATA-INDEX.md" 7
+fi
+EXPECTED_TAG="$(sed -n 's/^DATA_INDEX_RELEASE=//p' "${ROOT}/data-index.env" | head -1 | tr -d '[:space:]')"
+README_INDEX_TAG="$(sed -n 's/^> \*\*Current versions\*\* .*data index \*\*`\([^`]*\)`\*\*.*/\1/p' "${ROOT}/README.md" | head -1)"
+if [ -n "$EXPECTED_TAG" ] && [ "$README_INDEX_TAG" != "$EXPECTED_TAG" ]; then
+    fail "README 'Current versions' says index ${README_INDEX_TAG:-<none>} but data-index.env says ${EXPECTED_TAG}" 7
+fi
+if [ -f "${ROOT}/docs/DATA-INDEX.md" ] && [ -n "$EXPECTED_TAG" ]; then
+    grep -q "$EXPECTED_TAG" "${ROOT}/docs/DATA-INDEX.md" \
+        || fail "docs/DATA-INDEX.md does not mention the current index tag ${EXPECTED_TAG}" 7
+fi
+log "Version block in README matches src/version.py (${SRC_VERSION}) and data-index.env (${EXPECTED_TAG})."
+
+
+# ---- 12. Cleanup -------------------------------------------------------------
 if [ "$KEEP_OUTPUT" -eq 0 ]; then
     log "Removing test output (use -k to keep)..."
     rm -rf "$OUT_DIR"

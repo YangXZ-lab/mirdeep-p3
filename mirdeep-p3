@@ -15,7 +15,23 @@ from datetime import datetime
 
 # ----------------------------------------------------------------------
 # Locate the project root (where this script resides) and add src/ to path.
-PROJECT_ROOT = Path(__file__).resolve().parent
+def _resolve_project_root():
+    """Locate the checkout; MIRDEEP_P3_HOME wins over this script's directory.
+
+    The pip console script (mirdeep_p3.cli) runs this file through runpy, so
+    __file__ already points at the checkout.  The environment variable covers
+    the other case: a wrapper that stores the tree elsewhere.
+    """
+    env = os.environ.get("MIRDEEP_P3_HOME")
+    if env:
+        candidate = Path(env).expanduser()
+        if candidate.is_dir():
+            return candidate.resolve()
+        sys.stderr.write(f"[warn] MIRDEEP_P3_HOME={env} is not a directory; ignoring it.\n")
+    return Path(__file__).resolve().parent
+
+
+PROJECT_ROOT = _resolve_project_root()
 SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
@@ -130,61 +146,37 @@ def show_banner():
     print(f"Version: {__version__}  |  Issues: {GITHUB_LINK}\n")
 
 # ----------------------------------------------------------------------
-def show_combined_identification_annotation_help():
-    """Display combined help for identification + annotation, marking parameter ownership."""
-    print("""
-╔══════════════════════════════════════════════════════════════╗
-║        MirDeep-P3  combined identification + annotation      ║
-╚══════════════════════════════════════════════════════════════╝
+def show_combined_step_help(step_str):
+    """Print generated help for every step selected on the command line.
 
-Parameters are labelled as:
-  [ID]   identification step only
-  [AN]   annotation step only
-  [BOTH] used by both steps
+    The option list comes from the steps' own parsers, so it stays in sync with
+    the real arguments for any combination (--step 1,2 / 1,3 / 2,3 / 1,2,3).
+    """
+    name_map = {
+        "1": "identification", "identification": "identification",
+        "2": "annotation", "annotation": "annotation",
+        "3": "analysis", "analysis": "analysis",
+    }
+    steps = []
+    for token in step_str.split(","):
+        name = name_map.get(token.strip(), token.strip())
+        if name and name not in steps:
+            steps.append(name)
 
---- Input / Output ---
-  -i, --input INPUT           [ID]   Input FASTQ/FASTA file(s), comma separated
-  -f, --file FILE             [ID]   File containing list of input files, one per line
-  -o, --output OUTPUT         [BOTH] Root output directory (will contain identification/ and annotation/ subfolders)
-  --prefix PREFIX             [AN]   Output prefix(es) for annotation (comma separated)
+    ordered = [s for s in ("identification", "annotation", "analysis") if s in steps]
+    ordered += [s for s in steps if s not in ordered]
 
---- Genome & Index ---
-  -g, --genome GENOME         [BOTH] Reference genome FASTA file
-  -d, --index INDEX           [BOTH] Bowtie index prefix (skip building if provided)
+    parsers = {}
+    for name in ordered:
+        if name == "identification":
+            parsers[name] = identification.build_parser()
+        elif name == "annotation":
+            parsers[name] = annotation.build_parser()
+        elif name == "analysis":
+            parsers[name] = analysis.build_parser()
+    print_combined_step_help([s for s in ordered if s in parsers], parsers)
 
---- Replicates & Parallelism ---
-  -r, --replicate REPLICATE   [BOTH] Replicate grouping: comma-separated counts per group
-  -t, --threads THREADS       [BOTH] Number of threads
-  -p, --progress PROGRESS     [BOTH] Number of parallel processes
 
---- Identification specific ---
-  --type {fastq,fq,fasta,fa}  [ID]   Input file type
-  --min-len MIN_LEN           [ID]   Minimum read length
-  --max-len MAX_LEN           [ID]   Maximum read length
-  --rpm-threshold THRESH      [ID]   RPM threshold for filtering
-  --max-mappings MAX_MAP      [ID]   Maximum allowed genome mappings
-  --pre-length LENGTH         [ID]   Precursor flanking length
-  --reads_clean / --no-reads_clean [ID] Enable/disable read cleaning
-  --clean                     [ID]   Remove temp after identification (not applicable to annotation)
-
---- Annotation specific ---
-  --prefix_miRNA PREFIX_MIRNA [AN]   miRNA prefix (e.g., 'N710')
-  --species SPECIES           [AN]   Species name (e.g., 'Arabidopsis thaliana')
-  -s, --same                  [AN]   Use same prefix for input and output (case1,case2,...)
-  --consistency CONSISTENCY   [AN]   Reference basic-info file for consistency
-  --common                    [AN]   Enable common miRNA consistency analysis
-
---- External tool paths (if not in PATH) ---
-  --bowtie PATH               [BOTH]
-  --bowtie-build PATH         [BOTH]
-  --RNAfold PATH              [BOTH]
-  --samtools PATH             [BOTH]
-  --bedtools PATH             [BOTH]
-  --trim_galore PATH          [ID]
-  --seqkit PATH               [AN]
-
-""")
-# ----------------------------------------------------------------------
 def handle_help_request(args, parser, subcommand_parsers):
     """
     Custom help display logic.
@@ -211,7 +203,7 @@ def handle_help_request(args, parser, subcommand_parsers):
             if s in ("1", "identification"): norm.add("identification")
             elif s in ("2", "annotation"): norm.add("annotation")
         if "identification" in norm and "annotation" in norm:
-            show_combined_identification_annotation_help()
+            show_combined_step_help(args.step)
             sys.exit(0)
             
     # --- Subcommand help ---
@@ -239,7 +231,7 @@ def handle_help_request(args, parser, subcommand_parsers):
             sys.exit(0)
         else:
             # Multiple steps -> show combined placeholder help
-            print_combined_step_help(args.step)
+            show_combined_step_help(args.step)
             sys.exit(0)
 
     # --- Main help (or implicit help when no arguments given) ---
@@ -369,7 +361,7 @@ def main():
                 cli_args = [arg for i, arg in enumerate(sys.argv[1:], start=1)
                             if i not in (step_idx, step_idx + 1)]
                 if '-h' in cli_args or '--help' in cli_args:
-                    show_combined_identification_annotation_help()
+                    show_combined_step_help(step_val)
                     sys.exit(0)
                 execute_combined_identification_annotation(cli_args, PROJECT_ROOT)
                 return

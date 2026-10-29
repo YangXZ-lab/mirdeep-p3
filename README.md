@@ -1,6 +1,14 @@
 # miRDeep-P3
 A comprehensive pipeline for plant miRNA discovery, annotation and downstream functional analysis from small RNA (sRNA) sequencing data.
 
+> **Current versions** — software **v3.1.8b** · data index **`mirdeep-p3-v3.1.4c-full`**
+>
+> The code and the data index (Rfam / mature / PmiREN BLAST indices) are released on
+> two independent schedules, so the index tag is tracked separately from the version
+> above; its single source of truth is [`data-index.env`](data-index.env). Changing or
+> upgrading the index means touching a few more files — follow the checklist in
+> [`docs/DATA-INDEX.md`](docs/DATA-INDEX.md).
+
 ## Highlights
 
 - **End-to-end miRNA discovery** — from raw sRNA-seq FASTQ to annotated
@@ -116,13 +124,25 @@ conda activate mirdp3
 wget https://github.com/YangXZ-lab/mirdeep-p3/releases/download/mirdeep-p3-v3.1.4c-full/data-index.tar.gz
 tar xzf data-index.tar.gz -C data/
 
+# Optional but recommended: record which index release this is. It is
+# reported at start-up and stored in the run manifest.
+echo mirdeep-p3-v3.1.4c-full > data/index/.index-version
+
 # Optional: add the miRDeep-P3 installation directory to your PATH.
 # Replace /PATH/mirdeep-p3 with your actual installation path.
 export PATH="/PATH/mirdeep-p3:$PATH"
 
 chmod 755 mirdeep-p3
 mirdeep-p3 -h
+
+# Optional: install the standard console entry point. It keeps using
+# this checkout, so data/ and scripts/ stay where they are.
+pip install -e .
+mirdeep-p3 -h
 ```
+
+> The console script and `./mirdeep-p3` are the same program. Set
+> `MIRDEEP_P3_HOME=/path/to/mirdeep-p3` if the tree moves later.
 
 ### Option C: Docker
 ```bash
@@ -202,6 +222,15 @@ mirdeep-p3 identification \
 - **Skip steps**: `--no-reads_clean` skip the reads clean step.
 - **Clean up**: `--clean` deletes each sample's `temp/` after the run, while the bowtie index under `output/index` is kept. Add `--clean-index` to delete the index as well (ignored when the index came from `-d`).
 - **Resume an interrupted run**: `--resume` skips every stage whose artifacts are already on disk and whose record still matches the current inputs, parameters, genome and version. If any of them changed, the sample is re-run from the start instead of trusting stale files. `--clean` is ignored while resuming, because the intermediates under `temp/` are what makes resuming possible.
+- **Data index release**: the software and the index are released on
+  separate schedules, so start-up prints one line such as `[index] data
+  index: mirdeep-p3-v3.1.4c-full (matches data-index.env)`. The line never
+  changes a result and never aborts a run; the same state is recorded in the
+  run manifest, and a changed tag invalidates `--resume`. Write one tag into
+  `data/index/.index-version` to make the comparison possible; without it the
+  line reports the release as unknown.
+- **Console entry point**: `pip install -e .` puts `mirdeep-p3` on `PATH`
+  (via `mirdeep_p3.cli`); it is equivalent to `./mirdeep-p3`.
 - **Run record**: every sample writes `output/<prefix>/<prefix>.run.json` (version, parameters, tool versions, input fingerprint, per-stage status and duration), and the batch writes `output/mirdp3-identification-<time>.manifest.json`. Both are JSON and are written atomically, so a killed run never leaves a truncated file.
 
 ### miRNA annotation after identification
@@ -607,6 +636,7 @@ to `main` and on pull requests, covering three levels:
 | 2 | `e2e-identification` | End-to-end miRNA identification on a mini Arabidopsis dataset | minutes |
 | 3 | `e2e-annotation` | End-to-end annotation of the identification output | minutes |
 | 4 | `analysis` smoke | `Stat` + `Differential_expression` on a bundled 180-miRNA fixture | seconds |
+| 5 | unit / CLI | coordinate and data-index unit tests, generated `--step` help, console entry point | seconds |
 
 Badges:
 
@@ -631,7 +661,7 @@ conda activate mirdp3        # or your mirdeep-p3 environment
 Requires `tests/data/` (mini.fq + mini_genome.fasta) — already included
 in the repository. Exit codes: `0` all passed, `1` missing external tool,
 `2` index download failed, `3` identification, `4` annotation, `5` target
-prediction, `6` analysis smoke. The analysis part needs `Rscript`; without
+prediction, `6` analysis smoke, `7` CLI/help/unit checks. The analysis part needs `Rscript`; without
 it that section is skipped with `[skip]`, not failed.
 
 ## Troubleshooting / FAQ

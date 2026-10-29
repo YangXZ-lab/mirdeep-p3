@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mirdeep-p3"
+dynamic = ["version"]
+description = "miRNA discovery and analysis from deep sequencing"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "Jiawen Zhao" }]
+keywords = ["miRNA", "plant", "small RNA", "miRDeep"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: BSD License",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Operating System :: POSIX :: Linux",
+]
+
+[project.urls]
+Homepage = "https://github.com/YangXZ-lab/mirdeep-p3"
+
+# Provides the mirdeep-p3 command in PATH.  The pipeline is NOT packaged: the
+# console script locates the checkout (MIRDEEP_P3_HOME or an editable install)
+# and runs it, so data/, scripts/ and src/ keep one single copy.
+[project.scripts]
+mirdeep-p3 = "mirdeep_p3.cli:main"
+
+[tool.setuptools]
+packages = ["mirdeep_p3"]
+
+[tool.setuptools.dynamic]
+version = { attr = "mirdeep_p3.__version__" }

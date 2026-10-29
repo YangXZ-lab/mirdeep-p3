@@ -10,8 +10,8 @@ import argparse
 from . import (tfbs, target_finder, differential_expression,
                functional_analysis, stat, onestep)
 
-def main(argv, project_root=None):
-    """Entry point for analysis subcommands."""
+def build_parser():
+    """Build the analysis parser (shared with the combined --step help)."""
     parser = argparse.ArgumentParser(
         prog="mirdeep-p3.py analysis",
         description="Downstream analysis modules for MirDeep-P3.",
@@ -70,6 +70,13 @@ def main(argv, project_root=None):
     )
     onestep.add_arguments(parser_onestep)
     
+    return parser
+
+
+def main(argv, project_root=None):
+    """Entry point for analysis subcommands."""
+    parser = build_parser()
+
     args = parser.parse_args(argv)
     args.project_root = project_root   # 传递给子命令
 

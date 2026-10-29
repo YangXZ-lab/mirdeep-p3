@@ -8,6 +8,87 @@ Release tags follow the scheme `v<version>` (source, used by the conda recipe) a
 Releases before 3.1.6c are listed on the
 [GitHub Releases page](https://github.com/YangXZ-lab/mirdeep-p3/releases).
 
+## [Unreleased] - 3.1.8b
+
+3.1.8b is housekeeping: the shared coordinate arithmetic gets a home and a test,
+the combined `--step` help is generated from the real parsers, the tree gains a
+standard console entry point, and the installed data index finally says which
+release it is. No algorithm, no default and no output format changed.
+
+### Added
+
+- **`src/utils/coords.py`** (new, O-05). `compute_star()` and
+  `map_prediction()` now hold the coordinate arithmetic that used to be inlined
+  in `src/primary-basic-info.py` and `src/mod_rm_redundant_meet_plant.py`
+  (116 lines removed from the two scripts). `map_prediction()` raises
+  `ValueError("negative or zero positions")`; the caller keeps its original
+  warning text and skips that record exactly as before.
+- **`tests/test_coordinates.py`** (new, standard library only). Covers
+  `compute_star()` on both strands and both mature placements, the regression
+  that a star interval must be as long as its sequence (the 3.1.6c bug), and
+  `map_prediction()` for the four strand x arm combinations against
+  hand-computed coordinates.
+- **`src/utils/data_index.py`** (new, O-10). Reports the installed data-index
+  release and compares it with `data-index.env`; the states are `missing`,
+  `unknown`, `unrecorded`, `match` and `mismatch`. `identification` and
+  `annotation` print one `[index] data index: ...` line at start-up, the batch
+  manifest records the whole state, and a changed tag invalidates `--resume`.
+  `tests/test_data_index.py` pins every state.
+- **`pyproject.toml` + `mirdeep_p3/` package** (new, O-09, conservative). A
+  standard console script (`mirdeep-p3 = "mirdeep_p3.cli:main"`) that locates
+  the checkout and runs the existing entry point, so `pip install -e .` works.
+  The tree layout, `data/` and `scripts/` are untouched and nothing is packaged
+  into a wheel.
+- **`MIRDEEP_P3_HOME`** environment variable, honoured by `./mirdeep-p3` too,
+  for installations that keep the tree outside the package directory.
+
+### Changed
+
+- **Combined `--step` help is generated** (O-06) from the selected steps own
+  parsers. `--step 1,3`, `--step 2,3` and `--step 1,2,3` now print a real option
+  list instead of the "(Full combined help will be implemented later.)"
+  placeholder. The 55-line hand-written 1+2 help is gone; the generated output
+  groups options by the steps that accept them and marks options whose help text
+  differs between steps.
+- `src/commands/analysis/__init__.py` exposes `build_parser()` so the combined
+  help reuses the real parser; `analysis.main()` behaviour is unchanged.
+- `test.sh` gained a CLI/help/unit section (exit code 7) and records
+  `data/index/.index-version` when it unpacks the index.
+
+### Fixed
+
+- The first generated-help build crashed on `--step 1,3`, `--step 2,3` and
+  `--step 1,2,3` with `AttributeError: ArgumentParser object has no attribute
+  help`; the subcommand help now comes from `_choices_actions` and the aliases
+  (`DE`, `FA`) are collapsed.
+
+### Documentation
+
+- **`docs/DATA-INDEX.md`** (new). The data index is versioned on its own axis, so
+  the document spells out the two axes, the `.index-version` marker, the five
+  states, every file that reads `DATA_INDEX_RELEASE`, and an 8-step checklist for
+  publishing a new index (release asset, `data-index.env`, the two `wget`
+  commands, the marker, `test.sh`, `CHANGELOG.md`, the user-facing note).
+- **`README.md`** now opens with a *Current versions* block quoting the software
+  version and the current data-index tag, linking `data-index.env` (single source
+  of truth) and `docs/DATA-INDEX.md`.
+- **`test.sh` section 11** guards those docs: it fails with exit code 7 when the
+  README block disagrees with `src/version.py` or with `data-index.env`, or when
+  `docs/DATA-INDEX.md` no longer mentions the current tag. Verified by running the
+  guard against a copy of the tree with a wrong version and with a wrong tag.
+
+### Validation
+
+| Check | Result |
+|---|---|
+| `python3 tests/test_coordinates.py` | all checks passed |
+| `python3 tests/test_data_index.py` | 5/5 passed |
+| `--step 1,2` / `1,3` / `2,3` / `1,2,3` `-h` | all exit 0; `1,3` has no `--prefix_miRNA`, `2,3` does, `1,2,3` prints all three groups |
+| identification on the mini dataset (12 stages) | every output md5 identical to 3.1.8a (`mini_nr_predictions` 3ed474325e0c0a3ff58f0ef738106229, `mini_filter_P_prediction` 2e63d35040c892d3fc67797ba2bab877) |
+| annotation on the same data | `mirdp3-test-basic-info` f9223f3c2b120d62ec24fa60095aca09, `-basic-info-cluster` db799e4e78ea901bcb75fb2d0f160dbd — identical to 3.1.8a |
+| index reporting | `[index] data index: ... (no .index-version; data-index.env expects mirdeep-p3-v3.1.4c-full)`; batch manifest carries `params.data_index`, sample manifest carries the installed tag |
+| `./test.sh -t 12 -k` | ALL TESTS PASSED (identification, annotation, Target_finder psrna + ssearch, Stat, DE, CLI/help/unit) |
+
 ## [Unreleased] - 3.1.8a
 
 3.1.8a turns the identification pipeline into a declared list of stages and gives
@@ -54,6 +135,11 @@ the five key outputs are byte-identical to 3.1.7c (see Validation).
 
 - `identification --clean` is silently disabled when `--resume` is used, with an
   explicit log line, instead of deleting the tree that makes resuming possible.
+
+- The batch manifest is named with second resolution
+  (`mirdp3-identification-<mmddyy-HHMMSS>.manifest.json`) so two runs started in the
+  same minute no longer overwrite each other's record. The `.pipe` name keeps its
+  minute-resolution form for compatibility with existing downstream scripts.
 
 ### Validation
 

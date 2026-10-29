@@ -14,6 +14,7 @@ every run writes a manifest, and interrupted runs can be resumed.
 | O-03 | Per-sample `<prefix>.run.json` and batch `<time>.manifest.json` record everything needed to reproduce or audit a run |
 | O-08 | `test.sh` gains an analysis smoke test (`Stat` + `Differential_expression`), exit code `6` |
 | I-23 | Fixed `analysis DE` / `analysis FA`: the aliases used to print the help and exit 1 |
+| I-24 | The batch manifest name now carries seconds, so two runs in the same minute both leave a record |
 
 ## 2. Declarative stages
 
@@ -98,8 +99,6 @@ summarised without opening 100 files.
 
 ## 7. Known limitations
 
-- Batch manifest names have minute resolution, so two runs inside the same minute
-  overwrite the batch file (per-sample manifests are unaffected). Tracked as I-24.
 - `--resume` trusts size+mtime for the input fingerprint. Touching the file without
   changing it forces a full re-run (safe, just slower); editing it in place while
   keeping size and mtime is not detected (practically impossible by accident).

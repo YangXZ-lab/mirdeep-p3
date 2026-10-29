@@ -39,7 +39,7 @@
 | I-21 | D 设计 | P3 | `mod_miRDP.py` `_determine_arm()` | 负链 mature 直接返回空 → 负链 miRNA 结构上不可能被检出 | 待记录 |
 | I-22 | D 设计 | P3 | `src/rearrange_result.py` | basic-info 先写 24 列再重排成 22 列，重排顺序只在 docstring 里，易把两套列号搞混 | 待记录 |
 | I-23 | A 缺陷 | P1 | `src/commands/analysis/__init__.py:76-86` | 子命令别名 `DE` / `FA` 落到 else 分支，只打印帮助并 exit 1 | 已修 (3.1.8a) |
-| I-24 | C 工程 | P3 | `identification.py` 批次 manifest | 批次 manifest 文件名精度到分钟，同一分钟内重跑互相覆盖 | 待办 |
+| I-24 | C 工程 | P3 | `identification.py` 批次 manifest | 批次 manifest 文件名精度到分钟，同一分钟内重跑互相覆盖 | 已修 (3.1.8a) |
 
 ---
 
@@ -184,11 +184,11 @@
 - **修法**：parse 后先归一化 `command = {"DE": "Differential_expression", "FA": "Functional_analysis"}.get(args.analysis_command, args.analysis_command)`，六个分支改比 `command`。
 - **验证方法**：`test.sh` 第 10 段故意用 `analysis DE` 调用，通过即覆盖。
 
-### I-24（P3）批次 manifest 文件名精度到分钟 —— 待办
+### I-24（P3）批次 manifest 文件名精度到分钟 —— 已修 (3.1.8a)
 - **证据**：`identification.py: run()` 用 `datetime.now().strftime("%m%d%Y-%H%M")` 生成时间戳（与 pipe 文件同源），批次 manifest 复用之。
 - **影响**：同一分钟内重跑会覆盖上一条批次记录（每样本 `*.run.json` 不受影响，信息不丢）。
-- **建议改法**：时间戳加秒（`%m%d%Y-%H%M%S`），或存在同名时追加 `-2`。
-- **验证方法**：连续两次 `--resume` 后 `ls <out>/*.manifest.json` 应有两条。
+- **改法**：批次 manifest 单独用秒级时间戳 `manifest_stamp = datetime.now().strftime("%m%d%Y-%H%M%S")`（`src/commands/identification.py`），`.pipe` 文件名保持分钟级以兼容既有下游。
+- **验证方法**：同一分钟内连续两次 `--resume`，`ls <out>/*.manifest.json` 应有两条。
 
 ---
 
@@ -207,7 +207,11 @@
 | O-09 | `pyproject.toml` + `console_scripts` 安装入口 | 摆脱"无扩展名脚本 + chmod"的坑（I-13） | 中，会动安装方式 |
 | O-10 | 启动时比对 `DATA_INDEX_RELEASE` 与已装索引版本 | 防"软件新、索引旧"的静默不一致 | 小 |
 
-**3.1.8a 已落地**：O-01、O-02、O-03、O-08（见 §5 变更日志）。其余仍开放。
+**3.1.8a 已落地**：O-01、O-02、O-03、O-08（见 §5 变更日志）。
+
+**3.1.8b 已落地**：O-05（含 `tests/test_coordinates.py`）、O-06、O-09（保守版）、O-10（降级版：只报告不阻断）。（见 §5 变更日志）
+
+**明确不做**：O-07（植物判据淘汰统计，2026-11-18 决定）。
 
 ---
 
@@ -234,7 +238,13 @@
 | 2026-11-18 | O-03 | 每样本 `<prefix>.run.json` + 批次 `<time>.manifest.json`（版本/参数/工具版本/输入指纹/各 stage 状态与耗时，原子写） | `770c2bc` | `tests/test_output/mini/mini.run.json` 中 12 个 stage 全 status=ok |
 | 2026-11-18 | O-08 | `test.sh` 第 10 段 analysis 冒烟（Stat + DE，新 fixture 180 miRNA × 6 样本），失败退出码 6 | `770c2bc` | `./test.sh -t 12 -k` → ALL TESTS PASSED |
 | 2026-11-18 | I-23 | 修复 `analysis DE` / `analysis FA` 别名分发（归一化命令名） | `770c2bc` | test.sh 用 `analysis DE` 调用并通过 |
+| 2026-11-18 | I-24 | 批次 manifest 改用秒级时间戳，`.pipe` 仍按分钟 | `460256a` | 同一分钟内两次运行产生两个 manifest 文件 |
 | 2026-11-18 | I-05 | `--step` 参数剥离改为按索引过滤，不再依赖固定偏移 | `ab930f9` | `-h --step 1,2` 与 `--step 1,2 -h` 输出 byte-identical |
 | 2026-11-18 | I-07 | `--clean` 文案与实际一致（只删 temp）；新增 `--clean-index`，`-d` 提供的索引跳过并记日志 | `ab930f9` | 帮助正文含 `genome index is kept` |
 | 2026-11-18 | I-10 | 补回 `scripts/dedup_score_pair.py`（按 (col1,col2) 保留最高分） | `ab930f9` | 脚本可执行，`docs/core-dataset.md` 流程可复现 |
 | 2026-11-18 | I-13 | `mirdeep-p3`、`src/miRNA_consistency.py`、`scripts/dedup_score_pair.py` 以 100755 提交 | `ab930f9` | `git ls-files -s` |
+| 2026-11-18 | O-05 | 抽出 `src/utils/coords.py`（`compute_star` / `map_prediction`），两个调用方共删 116 行；新增 `tests/test_coordinates.py`（四组合手算断言） | `a1bea94` | 单测全过；重构后 test.sh 的 basic-info md5 仍为 `f9223f3c...` |
+| 2026-11-18 | O-06 | 组合帮助改为从各 step parser 程序化生成，删 55 行手写 1+2 帮助；`analysis/__init__.py` 拆出 `build_parser()`；`mirdeep-p3` 新增 `show_combined_step_help()` | `a1bea94` | 四种 `--step` 组合 rc=0；`1,3` 无 `--prefix_miRNA`、`2,3` 有、`1,2,3` 三段标题齐 |
+| 2026-11-18 | O-09 | 保守版打包入口：`pyproject.toml` + `mirdeep_p3/{__init__,cli}.py`；`PROJECT_ROOT` 支持 `MIRDEEP_P3_HOME` | `a1bea94` | `python3 -m mirdeep_p3.cli -h` 打印 banner；test.sh 第 11 段覆盖 |
+| 2026-11-18 | O-10 | 降级版索引自检：`src/utils/data_index.py`（5 状态）+ `tests/test_data_index.py`；启动打印 `[index]`；写进 manifest；索引 tag 变化让 `--resume` 失效；test.sh 写 `.index-version` | `a1bea94` | 单测 5/5；identification/annotation 均打印 `[index]`；批次 manifest 含 `params.data_index` |
+| 2026-11-18 | O-10 | 文档配套：新增 `docs/DATA-INDEX.md`（两条版本轴 / 标记文件 / 五种状态 / 消费方清单 / 换索引 8 步 / FAQ），README 顶部加 *Current versions* 块，`test.sh` 第 11 段加文档守卫（不一致 exit 7） | `b94ee9e` | 正例通过；错版本、错 tag、`docs/DATA-INDEX.md` 缺 tag 三种反例均 exit 7；`./test.sh -t 12 -k` → ALL TESTS PASSED |

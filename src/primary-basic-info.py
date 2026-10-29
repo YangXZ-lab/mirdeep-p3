@@ -25,6 +25,8 @@ import argparse
 from typing import Dict, Tuple, Optional
 from collections import defaultdict
 
+from utils.coords import compute_star
+
 
 def parse_range(range_str: str) -> Tuple[int, int]:
     """
@@ -181,48 +183,6 @@ def read_filtered_anno(file_path: str) -> Tuple[Dict[str, Dict[str, str]], Dict[
     return conserve, non_conserve
 
 
-STAR_LEN = 21
-
-
-def compute_star(pre_seq: str, mature_seq: str, pre_start: int, pre_end: int,
-                 strand: str) -> Optional[Tuple[str, int, int]]:
-    """
-    Locate the miRNA* (passenger strand) on the precursor.
-
-    ``pre_seq`` is written in transcript (mature) orientation: it is the strand
-    on which ``mature_seq`` is found.  It is therefore co-linear with the
-    genomic coordinates only for the '+' strand.  For the '-' strand it is the
-    reverse complement of that interval, so its 5' end maps to ``pre_end`` and
-    the genomic axis has to be mirrored.
-
-    Coordinates follow the same convention as the input ranges, i.e. the
-    interval covers [start, end) and its length equals ``end - start``.
-
-    Returns:
-        ``(star_seq, star_beg, star_end)``, or ``None`` if ``mature_seq``
-        cannot be placed at either end of the precursor.
-    """
-    pre_len = len(pre_seq)
-    mature_len = len(mature_seq)
-    ind = pre_seq.find(mature_seq)
-    if ind < 0:
-        return None
-
-    at5 = abs(ind) <= 2                              # mature at the precursor 5' end
-    at3 = abs(ind - (pre_len - mature_len)) <= 2     # mature at the precursor 3' end
-    if not (at5 or at3):
-        return None
-
-    # miRNA* occupies the opposite arm of the hairpin
-    star_seq = pre_seq[max(0, pre_len - STAR_LEN):] if at5 else pre_seq[:STAR_LEN]
-    n = len(star_seq)
-
-    # '+' : pre_seq 5' end == pre_start -> star on the precursor 3' arm sits HIGH
-    # '-' : pre_seq 5' end == pre_end   -> star on the precursor 3' arm sits LOW
-    star_at_high = at5 if strand == '+' else (not at5)
-    if star_at_high:
-        return star_seq.upper(), pre_end - n, pre_end
-    return star_seq.upper(), pre_start, pre_start + n
 
 
 def generate_tag(member: int) -> str:
