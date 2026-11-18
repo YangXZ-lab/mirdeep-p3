@@ -7,7 +7,7 @@
 
 | 版本轴 | 当前值 | 真源 | 查法 |
 |---|---|---|---|
-| 软件 | `3.1.8b` | `src/version.py` 的 `__version__` | `./mirdeep-p3 -v` |
+| 软件 | `3.1.8c` | `src/version.py` 的 `__version__` | `./mirdeep-p3 -v` |
 | 数据索引（期望） | `mirdeep-p3-v3.1.4c-full` | `data-index.env:22` 的 `DATA_INDEX_RELEASE` | `grep DATA_INDEX_RELEASE data-index.env` |
 | 数据索引（本机已装） | `mirdeep-p3-v3.1.4c-full` | `data/index/.index-version` | `cat data/index/.index-version` |
 

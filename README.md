@@ -1,7 +1,7 @@
 # miRDeep-P3
 A comprehensive pipeline for plant miRNA discovery, annotation and downstream functional analysis from small RNA (sRNA) sequencing data.
 
-> **Current versions** — software **v3.1.8b** · data index **`mirdeep-p3-v3.1.4c-full`**
+> **Current versions** — software **v3.1.8c** · data index **`mirdeep-p3-v3.1.4c-full`**
 >
 > The code and the data index (Rfam / mature / PmiREN BLAST indices) are released on
 > two independent schedules, so the index tag is tracked separately from the version

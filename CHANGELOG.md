@@ -8,6 +8,91 @@ Release tags follow the scheme `v<version>` (source, used by the conda recipe) a
 Releases before 3.1.6c are listed on the
 [GitHub Releases page](https://github.com/YangXZ-lab/mirdeep-p3/releases).
 
+## [Unreleased] - 3.1.8c
+
+This release fixes a silent 1-nt error in the mature 5' boundary.
+
+### Fixed
+
+- **Mature 5' boundary can be one base off** (`src/utils/mature_boundary.py`,
+  `src/audit_mature_boundary.py`). The mature interval comes from the prediction
+  and is then adjusted per arm by `utils/coords.py`; that adjustment can leave it
+  one base longer or shorter at the 5' end than the reads that support the locus.
+  Nothing fails when this happens, and the expression matrix absorbs it as a
+  1-nt offset rather than reporting it.
+
+  Measured on four annotated datasets (Arabidopsis 135, Gnetum 513, rice 446,
+  Scaevola 344 records; 1420 loci with usable coverage), 47 loci (3.3%) have a
+  dominant read offset that is not canonical. Three of them are confirmed
+  annotation errors against miRBase: `Nip-MIR166a`, `Nip-MIR166b` (annotation
+  keeps one extra base at the 5' end, the reads are the miRBase mature) and
+  `Gmo-MIR159a`. `Nip-MIR166a/b` are the two most abundant members of that
+  family, 1.6M counts each, so the error is not numerically small.
+
+  What annoys the diagnosis: 24 of the 47 loci are real 5'-truncated molecules,
+  not annotation errors — their annotated mature already sits on the arm
+  boundary, so there is no upstream room for the annotation to have drifted.
+  The audit therefore reports rather than assumes.
+
+### Added
+
+- **`src/utils/mature_boundary.py`** — the coordinate arithmetic for this
+  problem, stdlib only: precursor-relative <-> genomic conversion honouring
+  strand, dominant-offset selection with a deterministic tie-break towards
+  canonical, and a guarded correction that refuses anything leaving the
+  precursor or producing a mature outside 18-26 nt.
+- **`src/audit_mature_boundary.py`** — CLI. Reads `*.mature.aln`, keeps only
+  reads that reach the 3' end (`--max-3p-gap`, default 2) because a read
+  truncated at its 3' end says nothing about where the 5' starts, and writes
+  `<prefix>-boundary-audit.tsv` with the dominant offset, its share, an
+  arm-placement label and the proposed interval for every locus.
+- **`tests/test_mature_boundary.py`** — stdlib-only unit tests: relative/genomic
+  round trip on both strands, the trim convention, tie-breaking, the correction
+  guards, and the strand mirroring that a wrong implementation gets backwards
+  without failing.
+- **`annotation --fix-mature-boundary`** — opt-in correction. When set, the
+  audit runs with `--apply`, the pre-correction table is kept as
+  `<prefix>-basic-info.before-boundary-fix`, the reference and alignments are
+  rebuilt from the corrected table, and a second audit
+  (`<prefix>-boundary-audit.after-fix.tsv`) verifies the offsets are now
+  canonical.
+- **`annotation --boundary-min-fraction` / `--boundary-min-weight`** — the
+  evidence thresholds, default 0.60 and 10.0 read weight.
+
+### Changed
+
+- **The annotation part 2 order** (`src/commands/annotation.py`): align ->
+  audit (+ optional correct) -> cluster -> expression. The cluster used to run
+  before quantification; it now runs after the audit so that a corrected table
+  reaches every downstream product instead of only the matrices.
+
+### Notes
+
+- The audit runs on every annotation, correction does not. Defaults leave the
+  table byte-identical to 3.1.8b; only `--fix-mature-boundary` rewrites it.
+- Only +/-1 nt corrections are applied. A locus that is off by two or more is
+  reported as `shift_beyond_limit` and left alone, because at that distance the
+  dominant offset is more likely to be 5'-degradation than a boundary slip.
+- The audit measures two windows, and they are not interchangeable. Candidates
+  are built in the precursor +/-20 nt window, which is wide enough that a mature
+  shifted by one base still lands inside it; the arm-placement label and the
+  containment check use the real hairpin (mature + loop + star). A 22 column
+  table carries both. Reading only the wide window made the arm label a
+  20 nt-too-large yardstick and hid the case below.
+- A correction can push the mature one base past the annotated precursor end,
+  which is what happens when the hairpin was excised flush with the old (wrong)
+  3' end: `Nip-MIR166a` and `Nip-MIR166b` on rice are exactly that. They stay
+  corrected, because the reads are the evidence, and the run log names them
+  under `corrected mature overhangs the annotated precursor: N (...)`. Extending
+  the precursor would also mean re-folding the hairpin and rewriting the stored
+  structure, so this is reported as a known limitation instead of edited
+  silently.
+- A correction touches the mature interval and nothing else: measured on the
+  rice dataset, 2 of 446 rows change and only columns 16/17/18 move, the other
+  444 rows stay byte-identical, the cluster file is unchanged, the expression
+  reference differs in exactly those 2 entries, and re-quantifying the other 444
+  loci returns the same counts.
+
 ## [Unreleased] - 3.1.8b
 
 3.1.8b is housekeeping: the shared coordinate arithmetic gets a home and a test,

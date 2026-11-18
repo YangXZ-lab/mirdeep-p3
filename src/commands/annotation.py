@@ -63,6 +63,16 @@ def add_arguments(parser: argparse.ArgumentParser):
                              "mature reference, in bp (default: %(default)s). Use 2 to "
                              "reproduce the <=3.1.6c behaviour; values above 3 inflate "
                              "abundant families and are not recommended.")
+    parser.add_argument("--fix-mature-boundary", action="store_true",
+                        help="Move the mature 5' end onto the read-supported position "
+                             "when the alignment disagrees by exactly one base. Writes "
+                             "<prefix>-boundary-audit.tsv either way.")
+    parser.add_argument("--boundary-min-fraction", type=float, default=0.60,
+                        help="Minimum share of reads that must agree on the 5' offset "
+                             "before the boundary is corrected (default: %(default)s).")
+    parser.add_argument("--boundary-min-weight", type=float, default=10.0,
+                        help="Minimum read weight before a locus is judged for boundary "
+                             "correction (default: %(default)s).")
 
     parser.add_argument("--bowtie", help="path to bowtie")
     parser.add_argument("--blastn", help="path to blastn")
@@ -365,12 +375,106 @@ def run_annotation_part2(
     basic_info_file: Path,
     project_root: Path
 ):
-    """Execute 4.12 (cluster) and 4.13 (expression) using final basic-info."""
+    """Execute 4.12 (cluster) and 4.13 (expression) using final basic-info.
+
+    Order matters here.  The processed reads are aligned against the mature
+    references (4.13a), the mature 5' boundary is then audited against those
+    alignments (4.13b) and corrected when requested, and only afterwards are
+    the cluster and the expression matrices built (4.12, 4.13c).  Building the
+    cluster first would leave it describing the pre-correction intervals while
+    the matrices describe the corrected ones.
+    """
     py_exe = sys.executable
     src_dir = project_root / "src"
     temp_dir = output_group_dir / "temp"
     index_dir = output_group_dir / "index"
     temp_dir.mkdir(parents=True, exist_ok=True)
+    annotation_log = output_group_dir / f"{output_group_dir.name}_annotation.log"
+    log_fh = open(annotation_log, 'a')
+
+    def build_reference_and_align():
+        """Write the +/-1 nt mature reference, index it, align every sample.
+
+        Returns the alignment paths.  Called twice when a correction lands:
+        the reference is derived from basic-info, so it has to be rebuilt.
+        """
+        mature_1nt_fa = temp_dir / f"{output_group_dir.name}-basic-info-mature-1nt.fa"
+        subprocess.run([py_exe, str(src_dir / "extract_mature_flank.py"),
+                        "-i", str(basic_info_file), "-o", str(mature_1nt_fa)],
+                       stdout=subprocess.DEVNULL, stderr=log_fh, check=True)
+
+        mature_index = index_dir / f"{output_group_dir.name}-mature-1nt"
+        bowtie_build_exe = getattr(args, 'bowtie_build', None) or "bowtie-build"
+        subprocess.run([bowtie_build_exe, "-f", str(mature_1nt_fa), str(mature_index)],
+                       stdout=subprocess.DEVNULL, stderr=log_fh, check=True)
+
+        bowtie_exe = getattr(args, 'bowtie', None) or "bowtie"
+        alns = []
+        for folder, fprefix in zip(group_input_folders, group_file_prefixes):
+            # Prefer the exact file for this prefix, then fall back to a recursive
+            # search.  Both spellings are accepted because older identification runs
+            # wrote "<prefix>-processed.fa" instead of the canonical
+            # "<prefix>.processed.fa".
+            proc_fa = None
+            for name in (f"{fprefix}.processed.fa", f"{fprefix}-processed.fa"):
+                cand = folder / name
+                if cand.is_file():
+                    proc_fa = cand
+                    break
+            if proc_fa is None:
+                candidates = sorted(set(folder.rglob("*.processed.fa")) |
+                                    set(folder.rglob("*-processed.fa")))
+                if not candidates:
+                    sys.exit(f"No processed FASTA found in {folder} or its subdirectories "
+                             f"(expected '{fprefix}.processed.fa'; the legacy spelling "
+                             f"'{fprefix}-processed.fa' is also accepted).")
+                proc_fa = candidates[0]
+            out_aln = temp_dir / f"{fprefix}.mature.aln"
+            subprocess.run(f"{shq(bowtie_exe)} -a -v 0 {shq(mature_index)} -f {shq(proc_fa)} "
+                           f"> {shq(out_aln)} 2>> {shq(annotation_log)}",
+                           shell=True, check=True)
+            alns.append(out_aln)
+        return alns
+
+    def run_boundary_audit(aln_files, report_path, apply_to=None):
+        cmd = [py_exe, str(src_dir / "audit_mature_boundary.py"),
+               "-i", str(basic_info_file),
+               "-aln", ",".join(str(a) for a in aln_files),
+               "-o", str(report_path),
+               "--min-weight", str(getattr(args, "boundary_min_weight", 10.0)),
+               "--min-fraction", str(getattr(args, "boundary_min_fraction", 0.60)),
+               # Fixed at 2: a read that already lost 3+ bases at its 3' end is
+               # not a reliable witness for where the mature 5' starts.
+               "--max-3p-gap", "2"]
+        if apply_to is not None:
+            cmd += ["--apply", "-oc", str(apply_to)]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=log_fh, check=True)
+
+    # 4.13a Reference + alignment
+    aln_files = build_reference_and_align()
+
+    # 4.13b Mature 5' boundary audit (always), correction (opt-in)
+    audit_report = output_group_dir / f"{output_group_dir.name}-boundary-audit.tsv"
+    corrected_info = None
+    if getattr(args, "fix_mature_boundary", False):
+        corrected_info = temp_dir / f"{output_group_dir.name}-basic-info.boundary-fixed"
+    run_boundary_audit(aln_files, audit_report, apply_to=corrected_info)
+
+    if (corrected_info is not None and corrected_info.is_file()
+            and corrected_info.stat().st_size > 0):
+        # Keep the table as it was, so the change stays auditable after the run.
+        shutil.copy2(basic_info_file,
+                     temp_dir / f"{output_group_dir.name}-basic-info.before-boundary-fix")
+        shutil.copy2(corrected_info, basic_info_file)
+        print(f"[boundary] mature boundary corrected; see {audit_report.name}",
+              file=log_fh)
+        # The reference was derived from the old table: rebuild and re-align so
+        # the matrices are counted against the corrected mature sequences.
+        aln_files = build_reference_and_align()
+        # Verification pass: after a correct fix the dominant offsets are
+        # canonical, so this report should come back clean.
+        run_boundary_audit(aln_files,
+                           output_group_dir / f"{output_group_dir.name}-boundary-audit.after-fix.tsv")
 
     # 4.12 miRNA cluster
     mature_fa_cluster = temp_dir / f"{output_group_dir.name}-basic-info-mature.fa"
@@ -384,59 +488,22 @@ def run_annotation_part2(
     subprocess.run([py_exe, str(src_dir / "scan_cluster.py"),
                     "-i", str(basic_info_file), "-species", args.species,
                     "-prefix", args.prefix_miRNA, "-o", str(out_cluster)],
-                   stdout=subprocess.DEVNULL, stderr=open(output_group_dir / f"{output_group_dir.name}_annotation.log", 'a'), check=True)
+                   stdout=subprocess.DEVNULL, stderr=log_fh, check=True)
 
-    # 4.13 Expression matrix
+    # 4.13c Expression matrix
     mature_1nt_fa = temp_dir / f"{output_group_dir.name}-basic-info-mature-1nt.fa"
-    subprocess.run([py_exe, str(src_dir / "extract_mature_flank.py"),
-                    "-i", str(basic_info_file), "-o", str(mature_1nt_fa)],
-                   stdout=subprocess.DEVNULL, stderr=open(output_group_dir / f"{output_group_dir.name}_annotation.log", 'a'), check=True)
-
-    mature_index = index_dir / f"{output_group_dir.name}-mature-1nt"
-    bowtie_build_exe = getattr(args, 'bowtie_build', None) or "bowtie-build"
-    subprocess.run([bowtie_build_exe, "-f", str(mature_1nt_fa), str(mature_index)],
-                   stdout=subprocess.DEVNULL, stderr=open(output_group_dir / f"{output_group_dir.name}_annotation.log", 'a'), check=True)
-
-    bowtie_exe = getattr(args, 'bowtie', None) or "bowtie"
-    aln_files = []
-    for folder, fprefix in zip(group_input_folders, group_file_prefixes):
-        # Prefer the exact file for this prefix, then fall back to a recursive
-        # search.  Both spellings are accepted because older identification runs
-        # wrote "<prefix>-processed.fa" instead of the canonical
-        # "<prefix>.processed.fa".
-        proc_fa = None
-        for name in (f"{fprefix}.processed.fa", f"{fprefix}-processed.fa"):
-            cand = folder / name
-            if cand.is_file():
-                proc_fa = cand
-                break
-        if proc_fa is None:
-            candidates = sorted(set(folder.rglob("*.processed.fa")) |
-                                set(folder.rglob("*-processed.fa")))
-            if not candidates:
-                sys.exit(f"No processed FASTA found in {folder} or its subdirectories "
-                         f"(expected '{fprefix}.processed.fa'; the legacy spelling "
-                         f"'{fprefix}-processed.fa' is also accepted).")
-            proc_fa = candidates[0]
-        out_aln = temp_dir / f"{fprefix}.mature.aln"
-        annotation_log = output_group_dir / f"{output_group_dir.name}_annotation.log"
-        subprocess.run(f"{shq(bowtie_exe)} -a -v 0 {shq(mature_index)} -f {shq(proc_fa)} "
-                       f"> {shq(out_aln)} 2>> {shq(annotation_log)}",
-                       shell=True, check=True)
-        aln_files.append(out_aln)
-
-    read_total_file = output_group_dir / "read_total_file"
     aln_list = ",".join(str(a) for a in aln_files)
     exp_prefix = output_group_dir.name
     subprocess.run([py_exe, str(src_dir / "expression_matrix.py"),
-                    "-aln", aln_list, "-c", str(read_total_file),
+                    "-aln", aln_list, "-c", str(output_group_dir / "read_total_file"),
                     "-species", args.species,
                     "-fa", str(mature_1nt_fa),
                     "--max-5p-trunc", str(getattr(args, "max_5p_trunc", 2)),
                     "--max-3p-trunc", str(getattr(args, "max_3p_trunc", 3)),
                     "-o", str(output_group_dir / f"{exp_prefix}-mature.exp"),
                     "-oc", str(output_group_dir / f"{exp_prefix}-mature.count")],
-                   stdout=subprocess.DEVNULL, stderr=open(output_group_dir / f"{output_group_dir.name}_annotation.log", 'a'), check=True)
+                   stdout=subprocess.DEVNULL, stderr=log_fh, check=True)
+    log_fh.close()
 
 
 # ----------------------------------------------------------------------
