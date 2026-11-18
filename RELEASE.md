@@ -292,3 +292,49 @@ cp /path/to/data-index.tar.gz $C/data-index_<sha256[:10]>.tar.gz
 - [ ] bioconda PR CI green (`Lint`, `Linux Tests`, `OSX-64 Tests`, `build and test (ARM)`, `Summary`)
 - [ ] GitHub Release `<REL>-full` has the image tarball attached; tag `<REL>` exists
 - [ ] `data-index.tar.gz` still downloadable from `mirdeep-p3-v3.1.4c-full`
+
+---
+
+## 12. Release log
+
+Newest first.  Every row was verified after the fact, not copied from a plan.
+
+### 3.1.8e — 2026-11-18
+
+| Item | Value |
+|---|---|
+| source tag | `v3.1.8e` → `755ae0e` |
+| full tag | `v3.1.8e-full` → `9f7e449` |
+| source tarball sha256 | `6138b5e2a8088e29ad8fa1fe62f89904f83c4049570b42f8602152796c5526f9` (12 MB) |
+| image | `merc3dez/mirdeep-p3:3.1.8e-full`, `ghcr.io/yangxz-lab/mirdeep-p3:3.1.8e-full` |
+| image digest (Docker Hub + GHCR) | `sha256:97b7aaf5099b94b301a422e19c96473dbcd5fc24fef6e195080b52b4f110d6da` |
+| image config | `sha256:650c9d9a0cb5f2317dfc0c56bd5c9fa04c6465dc816bf4d682ce53b89cde2c86` |
+| offline bundle | Release `v3.1.8e-full` asset `mirdeep-p3-3.1.8e-full.tar.gz`, 1958 MB, sha256 `e40d9d4932caf0d0db7add1fd7749cdfb1bfc2dafd8857d3bb54f6efc0234c16` |
+| Aliyun mirror | `crpi-...cn-beijing.personal.cr.aliyuncs.com/merc3dez/mirdeep-p3:3.1.8e-full`, digest `sha256:48de1e4376db5e7ebf840cb88f5f523dad914f7b09ef0056c30e880e4989d261` |
+| conda package | `mirdeep-p3-3.1.8e-0.conda`, 161 MB, sha256 `db42fd411e31e2295aefe75a7199c331e44243fa9bb9e4bd9e4c56bd4198c4ec` |
+| conda channel | `jaguares/mirdeep-p3=3.1.8e` (versions present: 3.1.4c, 3.1.5a, 3.1.6c, 3.1.8e) |
+| bioconda PR | **not touched** — `#68582` still open on 3.1.6c, head `29320f7` |
+| `data-index.env` | unchanged, still `mirdeep-p3-v3.1.4c-full` |
+
+Verified: `docker run --rm <image> --version` → `MirDeep-P3 3.1.8e`; `-h` renders;
+`/opt/mirdeep-p3/data/index` has 20 files; a fresh `conda create -c
+https://conda.anaconda.org/jaguares ... mirdeep-p3=3.1.8e` reports
+`MirDeep-P3 3.1.8e` and installs the 20 index files; `data-index.tar.gz` still
+downloads from its Release (HTTP 200); the bioconda PR's five check-runs are still
+`success` from 2026-10-28.
+
+Two process notes for the next release:
+
+1. **Bump the version before tagging, not after.**  Tagging first and bumping later
+   leaves a tarball whose `conda.recipe` still names the previous version.  The tag
+   had to be re-cut.
+2. **The mini test fixtures are not in the tree since 3.1.7b.**  `test.sh` now
+   fetches them from the `v3.1.6c` tag (`FIXTURE_TAG`), and both CI e2e jobs fetch
+   them before the step that reads them — the annotation job's pre-check reads the
+   genome itself, so the fetch has to come before it, not before the annotation run.
+3. **`setup-python` no longer offers 3.9 on the current runner image** (Ubuntu
+   26.04; 3.9.25 ships for 22.04/24.04 only).  The smoke job runs 3.11 and 3.13.
+
+The `docs/` commit that adds this section lands after the tags, which is the same
+shape as 3.1.6c (`fb0b754` came after `v3.1.6c-full`).  It changes documentation
+only.
