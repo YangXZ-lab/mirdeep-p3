@@ -178,6 +178,25 @@ jobs:
           name: e2e-data
           path: .
 
+      # mini.fq and mini_genome.fasta are out of version control since 3.1.7b
+      # (~80 MB together); fetch them from the last tag that still carried them.
+      - name: Fetch mini test fixtures
+        shell: bash -l {0}
+        run: |
+          set -euo pipefail
+          mkdir -p tests/data
+          FIXTURE_TAG=v3.1.6c
+          for name in mini.fq mini_genome.fasta; do
+            if [ -s "tests/data/$name" ]; then
+              echo "$name already present"
+              continue
+            fi
+            curl -fsSL --retry 3 -o "tests/data/$name.part" \
+              "https://raw.githubusercontent.com/YangXZ-lab/mirdeep-p3/$FIXTURE_TAG/tests/data/$name"
+            mv "tests/data/$name.part" "tests/data/$name"
+            echo "$name: $(wc -c < "tests/data/$name") bytes"
+          done
+
       - name: Pre-check annotation inputs
         shell: bash -l {0}
         run: |
@@ -210,25 +229,6 @@ jobs:
           echo "--- blast output ---"
           head -5 /tmp/test_blast.out 2>&1
           echo "=== PRE-CHECK DONE ==="
-
-      # mini.fq and mini_genome.fasta are out of version control since 3.1.7b
-      # (~80 MB together); fetch them from the last tag that still carried them.
-      - name: Fetch mini test fixtures
-        shell: bash -l {0}
-        run: |
-          set -euo pipefail
-          mkdir -p tests/data
-          FIXTURE_TAG=v3.1.6c
-          for name in mini.fq mini_genome.fasta; do
-            if [ -s "tests/data/$name" ]; then
-              echo "$name already present"
-              continue
-            fi
-            curl -fsSL --retry 3 -o "tests/data/$name.part" \
-              "https://raw.githubusercontent.com/YangXZ-lab/mirdeep-p3/$FIXTURE_TAG/tests/data/$name"
-            mv "tests/data/$name.part" "tests/data/$name"
-            echo "$name: $(wc -c < "tests/data/$name") bytes"
-          done
 
       - name: Run annotation on identification output
         shell: bash -l {0}
