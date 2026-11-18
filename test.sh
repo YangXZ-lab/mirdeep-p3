@@ -36,6 +36,11 @@ RELEASE_TAG="${RELEASE_TAG:-mirdeep-p3-v3.1.4c-full}"
 INDEX_URL="https://github.com/YangXZ-lab/mirdeep-p3/releases/download/${RELEASE_TAG}/data-index.tar.gz"
 INPUT_FASTQ="${ROOT}/tests/data/mini.fq"
 GENOME="${ROOT}/tests/data/mini_genome.fasta"
+# mini.fq and mini_genome.fasta are ~80 MB together and have been out of
+# version control since 3.1.7b.  They are fetched on demand from the last tag
+# that still carried them, the same way data/index is fetched from its Release.
+FIXTURE_TAG="${FIXTURE_TAG:-v3.1.6c}"
+FIXTURE_URL="https://raw.githubusercontent.com/YangXZ-lab/mirdeep-p3/${FIXTURE_TAG}/tests/data"
 OUT_DIR="${ROOT}/tests/test_output"
 THREADS=8
 KEEP_OUTPUT=0
@@ -67,6 +72,22 @@ run_quiet() {
     fi
 }
 
+# Fetch a fixture that is deliberately out of version control.  The download
+# goes to a .part file first, so an interrupted transfer cannot leave a
+# truncated FASTA that fails later with a confusing parse error.
+fetch_fixture() {
+    local path="$1" name
+    name="$(basename "$path")"
+    log "Fetching ${name} from ${FIXTURE_TAG} ..."
+    mkdir -p "$(dirname "$path")"
+    if ! curl -fsSL --retry 3 -o "${path}.part" "${FIXTURE_URL}/${name}"; then
+        rm -f "${path}.part"
+        return 1
+    fi
+    mv "${path}.part" "$path"
+    log "  ${name}: $(wc -c < "$path") bytes"
+}
+
 # ---- 1. Dependency check ----------------------------------------------------
 log "Checking dependencies..."
 MISSING=()
@@ -79,9 +100,15 @@ fi
 log "All required tools found."
 
 # ---- 2. Test data -----------------------------------------------------------
-if [ ! -f "$INPUT_FASTQ" ] || [ ! -f "$GENOME" ]; then
-    fail "Test data not found in ${ROOT}/tests/data/" 1
-fi
+# Both files are out of version control, so fetch whatever is missing.
+# A failed download is exit code 2, the same as the index download.
+for _f in "$INPUT_FASTQ" "$GENOME"; do
+    if [ ! -s "$_f" ]; then
+        fetch_fixture "$_f" \
+            || fail "Could not download $(basename "$_f") from ${FIXTURE_URL}" 2
+    fi
+done
+log "Test data ready."
 
 # ---- 3. PmiREN / Rfam index (needed by annotation & identification) ---------
 if [ ! -d "${ROOT}/data/index" ]; then
