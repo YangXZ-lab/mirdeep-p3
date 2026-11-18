@@ -538,7 +538,7 @@ conda env create -f mirdp3_environment.yml -n mirdp3
 ### 12.3 四种安装
 1. `conda install -c jaguares mirdeep-p3`（自带 `data/index`）。
 2. 源码：`conda env create -f mirdp3_environment.yml -n mirdp3` + 下载 `data-index.tar.gz` 解到 `data/`，再写 `echo mirdeep-p3-v3.1.4c-full > data/index/.index-version`。
-3. Docker：`merc3dez/mirdeep-p3:3.1.6c-full`（另有阿里云镜像）。
+3. Docker：`merc3dez/mirdeep-p3:3.1.8e-full`（另有阿里云镜像）。
 4. **开发者入口（3.1.8b，O-09 保守版）**：在源码树里 `pip install -e .`，得到 `mirdeep-p3` console script（`mirdeep_p3/cli.py` 定位 checkout 后 `runpy.run_path` 调 `./mirdeep-p3`，是同一个程序）。`pyproject.toml` 只打包 `mirdeep_p3` 这个薄壳，**不打包** `src/`、`data/`、`scripts/`，树布局不变；树移动后设 `MIRDEEP_P3_HOME` 指回根目录。
 
 ### 12.4 数据索引

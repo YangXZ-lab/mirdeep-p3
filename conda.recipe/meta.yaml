@@ -3,16 +3,16 @@
 # Upload: anaconda upload /path/to/linux-64/mirdeep-p3-*.conda
 package:
   name: mirdeep-p3
-  version: "3.1.6c"
+  version: "3.1.8e"
 
 source:
-  url: https://github.com/YangXZ-lab/mirdeep-p3/archive/refs/tags/v3.1.6c.tar.gz
+  url: https://github.com/YangXZ-lab/mirdeep-p3/archive/refs/tags/v3.1.8e.tar.gz
   # sha256 of the tarball above.  The repository is public, so it can be
   # recomputed at any time without a token:
   #   curl -sL <url> | sha256sum
   # Verified reproducible: both github.com/archive/refs/tags/... and
   # codeload.github.com/... return the same digest.
-  sha256: bcac254ca85883a1bffd91ec1843d42db19d59f0b1a4430f968e475bc882bfaf
+  sha256: FILLED_IN_BY_THE_NEXT_COMMIT
 
 build:
   number: 0
