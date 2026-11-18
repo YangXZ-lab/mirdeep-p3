@@ -12,7 +12,7 @@ source:
   #   curl -sL <url> | sha256sum
   # Verified reproducible: both github.com/archive/refs/tags/... and
   # codeload.github.com/... return the same digest.
-  sha256: FILLED_IN_BY_THE_NEXT_COMMIT
+  sha256: 6138b5e2a8088e29ad8fa1fe62f89904f83c4049570b42f8602152796c5526f9
 
 build:
   number: 0
