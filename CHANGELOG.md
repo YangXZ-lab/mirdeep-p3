@@ -8,7 +8,83 @@ Release tags follow the scheme `v<version>` (source, used by the conda recipe) a
 Releases before 3.1.6c are listed on the
 [GitHub Releases page](https://github.com/YangXZ-lab/mirdeep-p3/releases).
 
-## [Unreleased] - 3.1.8d
+## [3.1.8e] - 2026-11-18
+
+3.1.8e adds the check that was missing between "mature is placed on the
+precursor" and "the precursor is a hairpin": the two arms have to leave room for
+a loop.
+
+### Fixed
+
+- **A locus can carry a mature and a star that overlap**
+  (`src/utils/structure_filter.py`, `src/filter_structure.py`,
+  `src/commands/annotation.py`). `compute_star()` takes `star_len` bases from the
+  opposite end of the precursor and only verifies that the mature sits at one
+  end; it never checks that the two arms clear each other. When the precursor is
+  a window cut tight around the mature, they do not:
+
+  ```
+  Nip-MIR12457a   precursor 3742249..3742289   40 nt
+                  mature    3742249..3742269   20 nt
+                  star      3742268..3742289   21 nt     20 + 21 = 41 > 40
+  ```
+
+  The star starts inside the mature, and the stored dot-bracket describes a
+  hairpin that neither arm matches. Nothing downstream fails.
+
+  Measured on the rice dataset: 1 locus of 446 overlaps. Relaxing to "loop of at
+  least 10 nt" -- a real plant hairpin loop is 15-100+ nt -- catches 14 (3.1%),
+  and all 14 share the same signature: a precursor of 40-50 nt that is exactly
+  `mature + star + loop` (e.g. `MIR12389a`: 50 = 21 + 21 + 8), far below the p5
+  of the dataset (64 nt).
+
+  These are not repairable by widening the precursor. Every one of the 14 has its
+  mature in the middle of the +/-20 nt window rather than on an arm, so
+  `compute_star()` on a wider precursor returns `None`: there is no hairpin with
+  this mature as an arm. Dropping them is the only correct action.
+
+### Added
+
+- **`src/utils/structure_filter.py`** -- the predicate, stdlib only. Measures the
+  net gap between the two arms (the loop length; negative means overlap), and
+  requires a precursor structure and a stem-window structure whose lengths match
+  their sequences, so a row without a usable fold is dropped too.
+- **`src/filter_structure.py`** -- CLI, also usable on its own against any
+  22-column basic-info. Writes `<prefix>-structure-filter.tsv` with one row per
+  input locus: status, reason, both arm lengths, the gap, and all six
+  coordinates, so a shrinking table is always explainable.
+- **`tests/test_structure_filter.py`** -- stdlib-only unit tests: the four
+  geometric cases of the gap (star after, star before, abutting, overlapping),
+  the threshold boundary (a gap of exactly `min_gap` survives, one base less does
+  not), each rejection branch, and a check that report lines carry all 13
+  columns.
+- **`annotation --min-arm-gap`** -- default 10 nt. `0` keeps every locus whose
+  arms do not overlap.
+
+### Changed
+
+- **The filter runs inside annotation part 1, right after basic-info is built**
+  and before any alignment. Part 2 (reference, alignment, boundary audit,
+  precursor repair, clustering, expression) therefore only ever sees the
+  surviving loci -- no reads are aligned, no hairpin is folded and no matrix is
+  counted for a locus that would be discarded. The pre-filter table is kept as
+  `temp/<prefix>-basic-info.before-structure-filter`.
+- **`annotation` now writes two new files**: `<prefix>-structure-filter.tsv` and,
+  when a locus is dropped, a shorter `<prefix>-basic-info`.
+
+### Notes
+
+- Default behaviour is no longer byte-identical to 3.1.8d *if* a locus fails the
+  new check. On the bundled mini dataset all 19 loci pass, so the produced
+  tables are unchanged; on the rice dataset basic-info goes from 446 to 432 rows.
+- The threshold tests whether the precursor has room for two arms and a loop, not
+  whether the star is expressed. Stars are usually inferred rather than observed;
+  this is a structural sanity check, and `--min-arm-gap 0` reduces it to "do not
+  overlap".
+- The filter only drops rows. It never edits one, so the kept rows stay
+  byte-identical.
+
+## [3.1.8d] - 2026-11-18
 
 3.1.8d closes the loop that 3.1.8c left open: a corrected mature can end up one
 base outside its own precursor, and until now that was reported but not fixed.
@@ -88,7 +164,7 @@ base outside its own precursor, and until now that was reported but not fixed.
   and only the mature triplet; the cluster file and the other 444 quantified
   loci are unchanged.
 
-## [Unreleased] - 3.1.8c
+## [3.1.8c] - 2026-11-18
 
 This release fixes a silent 1-nt error in the mature 5' boundary.
 
@@ -173,7 +249,7 @@ This release fixes a silent 1-nt error in the mature 5' boundary.
   reference differs in exactly those 2 entries, and re-quantifying the other 444
   loci returns the same counts.
 
-## [Unreleased] - 3.1.8b
+## [3.1.8b] - 2026-10-29
 
 3.1.8b is housekeeping: the shared coordinate arithmetic gets a home and a test,
 the combined `--step` help is generated from the real parsers, the tree gains a
@@ -254,7 +330,7 @@ release it is. No algorithm, no default and no output format changed.
 | index reporting | `[index] data index: ... (no .index-version; data-index.env expects mirdeep-p3-v3.1.4c-full)`; batch manifest carries `params.data_index`, sample manifest carries the installed tag |
 | `./test.sh -t 12 -k` | ALL TESTS PASSED (identification, annotation, Target_finder psrna + ssearch, Stat, DE, CLI/help/unit) |
 
-## [Unreleased] - 3.1.8a
+## [3.1.8a] - 2026-10-29
 
 3.1.8a turns the identification pipeline into a declared list of stages and gives
 every run a machine-readable record. The science is unchanged: on the mini dataset
@@ -331,7 +407,7 @@ Resume behaviour (mini dataset):
 prediction (psrna 120 rows deterministic, ssearch 112 rows), `Stat` (4 figures) and
 `Differential_expression` (180 miRNAs, DEG lists written) — `ALL TESTS PASSED`, exit 0.
 
-## [Unreleased] - 3.1.7c
+## [3.1.7c] - 2026-09-26
 
 3.1.7c is a maintenance release: it closes the entries of the issue ledger that were
 approved for this cycle, makes the analysis commands fail early with an actionable
@@ -392,7 +468,7 @@ behind.
   33 up / 22 down, temp cleaned).
 
 
-## [Unreleased] - 3.1.7b
+## [3.1.7b] - 2026-09-20
 
 3.1.7b makes that second engine the default, turns on indel tolerance, and adds a
 fixture that exercises the engine in test.sh.
@@ -493,7 +569,7 @@ With --allow-gap off (the 3.1.7a behaviour):
 The ssearch engine was regression-tested against 3.1.6d: with the new ordering applied,
 the two outputs are byte-identical, so the psrna work did not change the historical path.
 
-## [Unreleased] - 3.1.6d
+## [3.1.6d] - never released (folded into 3.1.8b)
 
 This release fixes two silent losses in the expression matrices: miRNAs that were
 annotated but never quantified, and reads that were quantified only partially.

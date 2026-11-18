@@ -229,22 +229,24 @@
 
 | 日期 | 编号 | 改动 | commit | 验证方式 |
 |---|---|---|---|---|
-| 2026-11-18 | I-01 | 补回 `src/miRNA_consistency.py`（544 行，三种模式），`--consistency`/`--common` 恢复可用 | `ab930f9` | 参考模式与 common 模式各产出 19 行 |
-| 2026-11-18 | I-02 | Target_finder 跑完默认删 `temp`，新增 `--keep-temp` | `ab930f9` | 默认无 temp / `--keep-temp` 有 temp，两次输出一致 |
-| 2026-11-18 | I-03 | 新增 `src/utils/toolset.py`；六个 analysis 子命令统一解析外部工具并支持 `--rscript/--fimo/--bedtools/--ssearch36/--seqkit/--emapper/--python` | `ab930f9` | 六子命令 `-h` 均含新参数；坏路径提前退出 |
-| 2026-11-18 | I-04 | `check_python_deps.py` 改为诚实检查：core 无三方依赖，numpy 标为 psrna 引擎的 optional | `ab930f9` | `test.sh` 打印 `numpy ✔ 2.4.4 (optional ...)` |
-| 2026-11-18 | O-01 | identification 重构为 12 个声明式 `Stage`（新 `src/commands/stage_runner.py`），空结果改用 `StageEmpty` 表达 | `770c2bc` | mini 五产物 md5 与 3.1.7c 逐一相同 |
-| 2026-11-18 | O-02 | 新增 `--resume`：按 manifest 记录 + 产物存在性跳过；签名变化整轮重跑；强制忽略 `--clean` | `770c2bc` | 全量续跑 12/12 skip；删 bed 只补 4.15；改签名触发全跑 |
-| 2026-11-18 | O-03 | 每样本 `<prefix>.run.json` + 批次 `<time>.manifest.json`（版本/参数/工具版本/输入指纹/各 stage 状态与耗时，原子写） | `770c2bc` | `tests/test_output/mini/mini.run.json` 中 12 个 stage 全 status=ok |
-| 2026-11-18 | O-08 | `test.sh` 第 10 段 analysis 冒烟（Stat + DE，新 fixture 180 miRNA × 6 样本），失败退出码 6 | `770c2bc` | `./test.sh -t 12 -k` → ALL TESTS PASSED |
-| 2026-11-18 | I-23 | 修复 `analysis DE` / `analysis FA` 别名分发（归一化命令名） | `770c2bc` | test.sh 用 `analysis DE` 调用并通过 |
-| 2026-11-18 | I-24 | 批次 manifest 改用秒级时间戳，`.pipe` 仍按分钟 | `460256a` | 同一分钟内两次运行产生两个 manifest 文件 |
-| 2026-11-18 | I-05 | `--step` 参数剥离改为按索引过滤，不再依赖固定偏移 | `ab930f9` | `-h --step 1,2` 与 `--step 1,2 -h` 输出 byte-identical |
-| 2026-11-18 | I-07 | `--clean` 文案与实际一致（只删 temp）；新增 `--clean-index`，`-d` 提供的索引跳过并记日志 | `ab930f9` | 帮助正文含 `genome index is kept` |
-| 2026-11-18 | I-10 | 补回 `scripts/dedup_score_pair.py`（按 (col1,col2) 保留最高分） | `ab930f9` | 脚本可执行，`docs/core-dataset.md` 流程可复现 |
-| 2026-11-18 | I-13 | `mirdeep-p3`、`src/miRNA_consistency.py`、`scripts/dedup_score_pair.py` 以 100755 提交 | `ab930f9` | `git ls-files -s` |
-| 2026-11-18 | O-05 | 抽出 `src/utils/coords.py`（`compute_star` / `map_prediction`），两个调用方共删 116 行；新增 `tests/test_coordinates.py`（四组合手算断言） | `a1bea94` | 单测全过；重构后 test.sh 的 basic-info md5 仍为 `f9223f3c...` |
-| 2026-11-18 | O-06 | 组合帮助改为从各 step parser 程序化生成，删 55 行手写 1+2 帮助；`analysis/__init__.py` 拆出 `build_parser()`；`mirdeep-p3` 新增 `show_combined_step_help()` | `a1bea94` | 四种 `--step` 组合 rc=0；`1,3` 无 `--prefix_miRNA`、`2,3` 有、`1,2,3` 三段标题齐 |
-| 2026-11-18 | O-09 | 保守版打包入口：`pyproject.toml` + `mirdeep_p3/{__init__,cli}.py`；`PROJECT_ROOT` 支持 `MIRDEEP_P3_HOME` | `a1bea94` | `python3 -m mirdeep_p3.cli -h` 打印 banner；test.sh 第 11 段覆盖 |
-| 2026-11-18 | O-10 | 降级版索引自检：`src/utils/data_index.py`（5 状态）+ `tests/test_data_index.py`；启动打印 `[index]`；写进 manifest；索引 tag 变化让 `--resume` 失效；test.sh 写 `.index-version` | `a1bea94` | 单测 5/5；identification/annotation 均打印 `[index]`；批次 manifest 含 `params.data_index` |
-| 2026-11-18 | O-10 | 文档配套：新增 `docs/DATA-INDEX.md`（两条版本轴 / 标记文件 / 五种状态 / 消费方清单 / 换索引 8 步 / FAQ），README 顶部加 *Current versions* 块，`test.sh` 第 11 段加文档守卫（不一致 exit 7） | `b94ee9e` | 正例通过；错版本、错 tag、`docs/DATA-INDEX.md` 缺 tag 三种反例均 exit 7；`./test.sh -t 12 -k` → ALL TESTS PASSED |
+| 2026-09-26 | I-01 | 补回 `src/miRNA_consistency.py`（544 行，三种模式），`--consistency`/`--common` 恢复可用 | `1afc1c4` | 参考模式与 common 模式各产出 19 行 |
+| 2026-09-26 | I-02 | Target_finder 跑完默认删 `temp`，新增 `--keep-temp` | `1afc1c4` | 默认无 temp / `--keep-temp` 有 temp，两次输出一致 |
+| 2026-09-26 | I-03 | 新增 `src/utils/toolset.py`；六个 analysis 子命令统一解析外部工具并支持 `--rscript/--fimo/--bedtools/--ssearch36/--seqkit/--emapper/--python` | `1afc1c4` | 六子命令 `-h` 均含新参数；坏路径提前退出 |
+| 2026-09-26 | I-04 | `check_python_deps.py` 改为诚实检查：core 无三方依赖，numpy 标为 psrna 引擎的 optional | `1afc1c4` | `test.sh` 打印 `numpy ✔ 2.4.4 (optional ...)` |
+| 2026-10-29 | O-01 | identification 重构为 12 个声明式 `Stage`（新 `src/commands/stage_runner.py`），空结果改用 `StageEmpty` 表达 | `c064a23` | mini 五产物 md5 与 3.1.7c 逐一相同 |
+| 2026-10-29 | O-02 | 新增 `--resume`：按 manifest 记录 + 产物存在性跳过；签名变化整轮重跑；强制忽略 `--clean` | `c064a23` | 全量续跑 12/12 skip；删 bed 只补 4.15；改签名触发全跑 |
+| 2026-10-29 | O-03 | 每样本 `<prefix>.run.json` + 批次 `<time>.manifest.json`（版本/参数/工具版本/输入指纹/各 stage 状态与耗时，原子写） | `c064a23` | `tests/test_output/mini/mini.run.json` 中 12 个 stage 全 status=ok |
+| 2026-10-29 | O-08 | `test.sh` 第 10 段 analysis 冒烟（Stat + DE，新 fixture 180 miRNA × 6 样本），失败退出码 6 | `c064a23` | `./test.sh -t 12 -k` → ALL TESTS PASSED |
+| 2026-10-29 | I-23 | 修复 `analysis DE` / `analysis FA` 别名分发（归一化命令名） | `c064a23` | test.sh 用 `analysis DE` 调用并通过 |
+| 2026-10-29 | I-24 | 批次 manifest 改用秒级时间戳，`.pipe` 仍按分钟 | `76edbf9` | 同一分钟内两次运行产生两个 manifest 文件 |
+| 2026-09-26 | I-05 | `--step` 参数剥离改为按索引过滤，不再依赖固定偏移 | `1afc1c4` | `-h --step 1,2` 与 `--step 1,2 -h` 输出 byte-identical |
+| 2026-09-26 | I-07 | `--clean` 文案与实际一致（只删 temp）；新增 `--clean-index`，`-d` 提供的索引跳过并记日志 | `1afc1c4` | 帮助正文含 `genome index is kept` |
+| 2026-09-26 | I-10 | 补回 `scripts/dedup_score_pair.py`（按 (col1,col2) 保留最高分） | `1afc1c4` | 脚本可执行，`docs/core-dataset.md` 流程可复现 |
+| 2026-09-26 | I-13 | `mirdeep-p3`、`src/miRNA_consistency.py`、`scripts/dedup_score_pair.py` 以 100755 提交 | `1afc1c4` | `git ls-files -s` |
+| 2026-10-29 | O-05 | 抽出 `src/utils/coords.py`（`compute_star` / `map_prediction`），两个调用方共删 116 行；新增 `tests/test_coordinates.py`（四组合手算断言） | `76edbf9` | 单测全过；重构后 test.sh 的 basic-info md5 仍为 `f9223f3c...` |
+| 2026-10-29 | O-06 | 组合帮助改为从各 step parser 程序化生成，删 55 行手写 1+2 帮助；`analysis/__init__.py` 拆出 `build_parser()`；`mirdeep-p3` 新增 `show_combined_step_help()` | `76edbf9` | 四种 `--step` 组合 rc=0；`1,3` 无 `--prefix_miRNA`、`2,3` 有、`1,2,3` 三段标题齐 |
+| 2026-10-29 | O-09 | 保守版打包入口：`pyproject.toml` + `mirdeep_p3/{__init__,cli}.py`；`PROJECT_ROOT` 支持 `MIRDEEP_P3_HOME` | `76edbf9` | `python3 -m mirdeep_p3.cli -h` 打印 banner；test.sh 第 11 段覆盖 |
+| 2026-10-29 | O-10 | 降级版索引自检：`src/utils/data_index.py`（5 状态）+ `tests/test_data_index.py`；启动打印 `[index]`；写进 manifest；索引 tag 变化让 `--resume` 失效；test.sh 写 `.index-version` | `76edbf9` | 单测 5/5；identification/annotation 均打印 `[index]`；批次 manifest 含 `params.data_index` |
+| 2026-10-29 | O-10 | 文档配套：新增 `docs/DATA-INDEX.md`（两条版本轴 / 标记文件 / 五种状态 / 消费方清单 / 换索引 8 步 / FAQ），README 顶部加 *Current versions* 块，`test.sh` 第 11 段加文档守卫（不一致 exit 7） | `76edbf9` | 正例通过；错版本、错 tag、`docs/DATA-INDEX.md` 缺 tag 三种反例均 exit 7；`./test.sh -t 12 -k` → ALL TESTS PASSED |
+
+> 3.1.8c 起的改动不再逐条登记本表，改由 `docs/RELEASE-NOTES-3.1.8c.md` / `-3.1.8d.md` / `-3.1.8e.md` 记录（含测量数据与取舍理由）；本表 commit 列已指向重建后的提交链。

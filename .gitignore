@@ -9,3 +9,4 @@ tests/data/mini.fq
 tests/data/mini_genome.fasta
 tests/test_output/
 TEST-3.1.6d.md
+tests/data/*.mirdp-idx*.json

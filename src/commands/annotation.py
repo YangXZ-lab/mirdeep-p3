@@ -73,6 +73,12 @@ def add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--boundary-min-weight", type=float, default=10.0,
                         help="Minimum read weight before a locus is judged for boundary "
                              "correction (default: %(default)s).")
+    parser.add_argument("--min-arm-gap", type=int, default=10,
+                        help="Minimum loop length between the mature and the star, in "
+                             "bases. Loci whose two arms overlap, or whose loop is "
+                             "shorter than this, are dropped right after basic-info is "
+                             "built (default: %(default)s; 0 keeps every locus whose "
+                             "arms do not overlap).")
 
     parser.add_argument("--bowtie", help="path to bowtie")
     parser.add_argument("--blastn", help="path to blastn")
@@ -91,6 +97,7 @@ def ensure_defaults(args):
     defaults = {
         'prefix_miRNA': None,
         'species': None,
+        'min_arm_gap': 10,
         'genome': None,
         'pmiren': "PmiREN-20260810-isoform.fa",
         'pmiren_index': "index/isoform-in",
@@ -358,10 +365,29 @@ def run_annotation_part1(
                     "-i", str(primary_info), "-o", str(second_basic_info)],
                    stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'), check=True)
     
+    # 4.11 Structure sanity filter
+    # A locus whose mature and star overlap, or whose loop between them is
+    # shorter than --min-arm-gap, cannot be a real hairpin: the precursor is a
+    # window cut tight around the mature rather than a fold.  Drop those here,
+    # before part 2, so no alignment, audit, repair or quantification work is
+    # spent on a locus that will not survive.
     final_basic_info = output_group_dir / f"{group_prefix}-basic-info"
-    subprocess.run(f"cp {shq(second_basic_info)} {shq(final_basic_info)}",
+    unfiltered_info = temp_dir / f"{group_prefix}-basic-info.before-structure-filter"
+    subprocess.run(f"cp {shq(second_basic_info)} {shq(unfiltered_info)}",
                    shell=True, check=True, stdout=subprocess.DEVNULL,
                    stderr=open(log_file, 'a'))
+
+    structure_report = output_group_dir / f"{group_prefix}-structure-filter.tsv"
+    min_arm_gap = getattr(args, "min_arm_gap", None)
+    if min_arm_gap is None:
+        min_arm_gap = 10
+    subprocess.run([py_exe, str(src_dir / "filter_structure.py"),
+                    "-i", str(unfiltered_info),
+                    "-o", str(structure_report),
+                    "--min-arm-gap", str(int(min_arm_gap)),
+                    "--apply", "-oc", str(final_basic_info)],
+                   stdout=subprocess.DEVNULL, stderr=open(log_file, 'a'),
+                   check=True)
 
     return final_basic_info
 
@@ -549,6 +575,10 @@ def run(args):
     ensure_defaults(args)
     cfg = getattr(args, 'config_data', {})
     project_root = args.project_root
+    # Reject a bad threshold here rather than letting the structure filter die
+    # for every group half-way through part 1.
+    if getattr(args, "min_arm_gap", 10) is not None and args.min_arm_gap < 0:
+        sys.exit("Error: --min-arm-gap must be non-negative.")
     # Data index (O-10): report the installed release; see utils/data_index.py.
     print(f"[index] data index: {describe_index(index_status(project_root))}")
 
