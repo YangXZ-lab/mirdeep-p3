@@ -310,6 +310,12 @@ if [ -f "${ROOT}/tests/test_mature_boundary.py" ]; then
     log "Mature-boundary unit tests passed."
 fi
 
+if [ -f "${ROOT}/tests/test_precursor_repair.py" ]; then
+    python3 "${ROOT}/tests/test_precursor_repair.py" >/dev/null 2>&1 \
+        || fail "tests/test_precursor_repair.py failed" 7
+    log "Precursor-repair unit tests passed."
+fi
+
 INDEX_STATE="$(python3 -c "import sys; sys.path.insert(0, '${ROOT}/src'); from utils.data_index import describe_index, index_status; print(describe_index(index_status('${ROOT}')))" 2>&1)" \
     || fail "data index status could not be read" 7
 log "data index: ${INDEX_STATE}"

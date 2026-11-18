@@ -107,7 +107,7 @@ def precursor_bounds(parts, beg_key, end_key, seq):
     """
     Read a window's bounds and verify them against the window's sequence.
 
-    basic-info uses a 1-based start with an exclusive end, so the span equals
+    basic-info uses a 0-based start with an exclusive end, so the span equals
     the sequence length.  When it does not, the table is not the layout this
     module assumes and the run stops instead of silently shifting a frame.
     """

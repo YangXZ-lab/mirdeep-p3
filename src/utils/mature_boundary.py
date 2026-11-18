@@ -15,11 +15,16 @@ the interval onto the read-supported position when the evidence justifies it.
 
 Interval convention
 -------------------
-``basic-info`` carries each feature as ``start<TAB>end`` with a 1-based start
+``basic-info`` carries each feature as ``start<TAB>end`` with a 0-based start
 and an exclusive end, i.e. ``end - start`` equals the sequence length.  This is
-not a guess: ``Nip-MIR166a`` carries ``3487876``/``3487897`` for a 21 nt mature.
+not a guess: the stored precursor and mature sequences reproduce the genome
+exactly, for all 446 rice loci, only under the 0-based reading.
 Everything below is 0-based half-open internally, which matches that convention
 directly.
+
+(3.1.8c called this interval 1-based.  Nothing computed wrong, because only
+differences of two coordinates are used here, but any code that slices a genome
+with these numbers has to use 0-based.)
 
 The precursor sequence is written in transcript (mature) orientation: co-linear
 with the genomic interval on ``+``, reverse complemented on ``-``.
@@ -72,7 +77,7 @@ def mature_rel_bounds(pre_start: int, pre_end: int, mature_start: int,
     half-open bounds, in transcript orientation.
 
     ``pre_start`` / ``pre_end`` / ``mature_*`` follow the basic-info convention:
-    1-based start, exclusive end.
+    0-based start, exclusive end.
     """
     if strand == '+':
         return mature_start - pre_start, mature_end - pre_start
@@ -82,7 +87,7 @@ def mature_rel_bounds(pre_start: int, pre_end: int, mature_start: int,
 def rel_to_genomic(pre_start: int, pre_end: int, rel_beg: int, rel_end: int,
                    strand: str) -> Tuple[int, int]:
     """Convert precursor-relative 0-based half-open bounds back to basic-info
-    coordinates (1-based start, exclusive end)."""
+    coordinates (0-based start, exclusive end)."""
     if strand == '+':
         return pre_start + rel_beg, pre_start + rel_end
     return pre_end - rel_end, pre_end - rel_beg

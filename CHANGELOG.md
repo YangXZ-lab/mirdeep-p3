@@ -8,6 +8,86 @@ Release tags follow the scheme `v<version>` (source, used by the conda recipe) a
 Releases before 3.1.6c are listed on the
 [GitHub Releases page](https://github.com/YangXZ-lab/mirdeep-p3/releases).
 
+## [Unreleased] - 3.1.8d
+
+3.1.8d closes the loop that 3.1.8c left open: a corrected mature can end up one
+base outside its own precursor, and until now that was reported but not fixed.
+
+### Fixed
+
+- **A corrected mature can overhang the annotated precursor**
+  (`src/utils/precursor_repair.py`, `src/repair_precursor.py`,
+  `src/commands/annotation.py`). The precursor is excised flush with the mature
+  it was built around; move the mature one base downstream and its 3' end lands
+  one base outside the hairpin. Nothing crashes, but the mature stops being a
+  substring of the precursor, so the stored dot-bracket describes a window that
+  no longer contains the mature it annotates, and the star is placed relative to
+  a frame that is now off by one.
+
+  Measured on the rice dataset: 0 of 446 loci overhang before the correction,
+  2 after (`Nip-MIR166a`, `Nip-MIR166b`), both by exactly 1 nt. Of 1420 loci
+  across four species, only those two are affected.
+
+  The new step runs only when `--fix-mature-boundary` actually rewrote the
+  table. For each overhanging locus it widens the precursor on the short side
+  (bases read from the genome), re-folds the widened precursor and its
+  +/-20 nt window with RNAfold, and recomputes the star. The widening is
+  verified to have only *added* bases -- the old precursor must still be present
+  at the offset the coordinates imply, otherwise the genome is a different
+  assembly and the row is left alone.
+
+  The mature sequence is untouched, so the bowtie reference and the alignments
+  stay valid; no third round of alignment is needed. On the rice dataset the
+  repair changes 2 of 446 rows and only columns 6-13 (the two windows); the
+  other 444 rows stay byte-identical and the star does not move, because the
+  extra base goes on the transcript 3' arm and the star sits on the other one.
+
+### Added
+
+- **`src/utils/genome_fasta.py`** -- random access to a genome FASTA with a
+  self-built byte-offset index, cached beside the file (falling back to a temp
+  directory when that is read-only). `samtools faidx` and `bedtools getfasta`
+  both want to write an index next to the FASTA, which is not always allowed;
+  pyfaidx would be a new dependency. A 360 MB genome costs one scan (~2 s) and
+  a few hundred bytes per query.
+- **`src/utils/precursor_repair.py`** -- the widening logic, stdlib only:
+  the interval arithmetic for "which side is short", a transcript-offset check
+  that the old precursor still sits where it should, the guard rail
+  (`--max-extension`, default 5 nt per side), and star recomputation.
+- **`src/repair_precursor.py`** -- CLI, also usable on its own against any
+  22-column basic-info plus its genome. Writes `<prefix>-precursor-repair.tsv`
+  with the old/new bounds, how many bases were added on each side, whether the
+  star moved, and how many columns changed.
+- **`tests/test_precursor_repair.py`** -- stdlib-only unit tests: the genome
+  fetcher against a synthetic multi-line FASTA on both strands (an off-by-one in
+  the byte arithmetic is invisible on a single-line record), the widening
+  decision for the high/low/both-sides cases, the refusal paths (too long,
+  sequence mismatch, RNAfold failure), and a check that writing a repair touches
+  only the window and star columns.
+
+### Changed
+
+- **`annotation --fix-mature-boundary`** now also repairs precursors, keeping
+  the pre-repair table as `<prefix>-basic-info.before-precursor-repair` and
+  writing a second report, `<prefix>-precursor-repair.tsv`.
+- **The basic-info interval is documented as 0-based.** 3.1.8c called it
+  1-based. Nothing computed wrong -- only differences of two coordinates are
+  used -- but the genome check settles it: the stored precursor and mature
+  sequences reproduce IRGSP-1.0 exactly for 446/446 loci only under the 0-based
+  reading (19/19 on the Arabidopsis test data). Anyone slicing a genome with
+  these coordinates, as the new repair step does, has to use 0-based.
+
+### Notes
+
+- Default behaviour is unchanged: with no `--fix-mature-boundary` the table is
+  byte-identical to 3.1.8b/3.1.8c (`f9223f3c...` on the mini dataset) and no
+  repair report is produced.
+- The repair never touches the mature interval, the names, the family, the
+  MIR_ID or the cluster-relevant columns.
+- Four species re-checked for scope: a correction changes at most 2 rows of 446,
+  and only the mature triplet; the cluster file and the other 444 quantified
+  loci are unchanged.
+
 ## [Unreleased] - 3.1.8c
 
 This release fixes a silent 1-nt error in the mature 5' boundary.

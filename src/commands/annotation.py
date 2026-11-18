@@ -436,6 +436,39 @@ def run_annotation_part2(
             alns.append(out_aln)
         return alns
 
+    def run_precursor_repair():
+        """Widen a precursor that no longer contains its corrected mature.
+
+        A 5' correction can leave the mature one base past the precursor end.
+        Nothing downstream fails, but the mature stops being a substring of the
+        precursor, so the stored dot-bracket and the star would describe a
+        window that no longer holds the mature.  This re-reads the genome,
+        widens the precursor on the short side, re-folds the precursor and its
+        +/-20 nt window, and recomputes the star.
+
+        The mature sequence is untouched, so the bowtie reference and the
+        alignments stay valid -- no third round of alignment is needed.
+        """
+        repaired = temp_dir / f"{output_group_dir.name}-basic-info.precursor-repaired"
+        report_path = output_group_dir / (
+            f"{output_group_dir.name}-precursor-repair.tsv")
+        cmd = [py_exe, str(src_dir / "repair_precursor.py"),
+               "-i", str(basic_info_file),
+               "-g", str(genome),
+               "-o", str(report_path),
+               "--apply", "-oc", str(repaired)]
+        rnafold_exe = getattr(args, "RNAfold", None)
+        if rnafold_exe:
+            cmd += ["--RNAfold", str(rnafold_exe)]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=log_fh, check=True)
+        if repaired.is_file() and repaired.stat().st_size > 0:
+            # Keep the pre-repair table so the widening stays auditable.
+            shutil.copy2(basic_info_file, temp_dir / (
+                f"{output_group_dir.name}-basic-info.before-precursor-repair"))
+            shutil.copy2(repaired, basic_info_file)
+            print(f"[precursor] widened precursor(s) re-folded; "
+                  f"see {report_path.name}", file=log_fh)
+
     def run_boundary_audit(aln_files, report_path, apply_to=None):
         cmd = [py_exe, str(src_dir / "audit_mature_boundary.py"),
                "-i", str(basic_info_file),
@@ -475,6 +508,10 @@ def run_annotation_part2(
         # canonical, so this report should come back clean.
         run_boundary_audit(aln_files,
                            output_group_dir / f"{output_group_dir.name}-boundary-audit.after-fix.tsv")
+        # 4.13b2 The correction may have pushed the mature past the precursor
+        # end; widen the precursor and re-fold it so every stored window still
+        # contains the mature it describes.
+        run_precursor_repair()
 
     # 4.12 miRNA cluster
     mature_fa_cluster = temp_dir / f"{output_group_dir.name}-basic-info-mature.fa"
